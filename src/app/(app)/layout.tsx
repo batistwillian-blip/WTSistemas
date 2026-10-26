@@ -8,6 +8,8 @@ import { requireUser } from "@/lib/auth";
 import { formatMoney, today } from "@/lib/format";
 import { accountBalances, pendingItems } from "@/lib/queries";
 import { roleAllows } from "@/lib/roles";
+import { db } from "@/db";
+import { integrationSettings } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +19,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const companies = await getUserCompanies(user);
   const ids = companies.map((c) => c.id);
   const d0 = today();
-  const [balances, overdueItems] = await Promise.all([accountBalances(ids), pendingItems(ids, d0)]);
+  const [balances, overdueItems, [integration]] = await Promise.all([
+    accountBalances(ids),
+    pendingItems(ids, d0),
+    db.select({ companyId: integrationSettings.companyId, importSales: integrationSettings.importSales }).from(integrationSettings),
+  ]);
+  // A empresa ligada ao Integrador BI ganha o submenu Vendas.
+  const salesCompanyId = integration?.importSales ? integration.companyId : null;
   const overdue = overdueItems.filter((p) => p.dueDate < d0);
   const balanceOf = (list: number[]) => balances.filter((b) => list.includes(b.companyId)).reduce((s, b) => s + b.balance, 0);
   const overdueOf = (list: number[], consolidated = false) =>
@@ -50,6 +58,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     const links = [
       { href: base, label: "Visão geral" },
       { href: `${base}/lancamentos`, label: "Lançamentos" },
+      ...(c.id === salesCompanyId ? [{ href: `${base}/vendas`, label: "Vendas" }] : []),
       { href: `${base}/contas`, label: "A pagar e receber", count: n },
       { href: `${base}/projecao`, label: "Projeção" },
     ];

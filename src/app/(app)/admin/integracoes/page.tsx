@@ -48,7 +48,7 @@ export default async function IntegracoesPage({ searchParams }: { searchParams: 
         context="Primetech Loja"
         color={loja?.color}
         title="Integrador BI (CHServer)"
-        subtitle="Importa as contas a receber e a pagar do sistema de vendas. Só leitura: nada é alterado no CHServer."
+        subtitle="Importa as contas a pagar e as vendas do sistema da loja. Só leitura: nada é alterado no CHServer."
       />
 
       {removed > 0 && <div className="alert ok">{removed} títulos a receber importados foram removidos do caixa.</div>}
@@ -92,8 +92,8 @@ export default async function IntegracoesPage({ searchParams }: { searchParams: 
             hasToken: !!settings,
             accountId: settings?.accountId ?? defaultAccount?.id ?? null,
             enabled: settings?.enabled ?? true,
-            importReceivables: settings?.importReceivables ?? true,
             importPayables: settings?.importPayables ?? true,
+            importSales: settings?.importSales ?? true,
           }}
         />
       </div>
@@ -103,8 +103,8 @@ export default async function IntegracoesPage({ searchParams }: { searchParams: 
           <h2>Títulos a receber importados</h2>
           <p style={{ marginBottom: 12 }}>
             Há <b>{importedReceivables.n}</b> títulos a receber vindos do CHServer no caixa, somando <b>{formatMoney(Number(importedReceivables.total))}</b>.
-            Se você não usa o contas a receber do CH, desmarque “Importar contas a receber”, salve e depois remova esses títulos. Lançamentos feitos à mão
-            no caixa não são afetados, e a remoção fica registrada no log.
+            O contas a receber do CH não é mais importado; remova esses títulos antigos para eles saírem do caixa. Lançamentos feitos à mão não são
+            afetados, e a remoção fica registrada no log.
           </p>
           <ActionForm action={clearImportedReceivables} className="form">
             <div>
@@ -137,8 +137,10 @@ export default async function IntegracoesPage({ searchParams }: { searchParams: 
             mostrado para alguém, gere um novo no CHServer e cole aqui.
           </p>
           <p className="help">
-            O que é importado: títulos marcados acima (Pagar e/ou Receber) com vencimento entre 1 ano atrás e 6 meses à frente. Título com data de baixa entra como
-            realizado. A cada importação, valores, vencimentos e baixas corrigidos no CHServer são atualizados aqui, e títulos excluídos lá saem do caixa. Os lançamentos importados aparecem com a etiqueta “Automático” e não podem ser editados aqui; a correção é feita no CHServer.
+            O que é importado: contas a pagar com vencimento entre 1 ano atrás e 6 meses à frente (título com data de pagamento entra como pago) e as
+            vendas (notas de saída) dos últimos 90 dias. O total vendido em cada dia entra no caixa como uma entrada “Vendas do dia”; notas canceladas e
+            devoluções são descontadas. A cada importação, o que foi corrigido no CHServer é atualizado aqui, e o que foi excluído lá sai do caixa. O
+            contas a receber do CH nunca é importado. Os lançamentos importados aparecem com a etiqueta “Automático” e não podem ser editados aqui; a correção é feita no CHServer.
           </p>
         </div>
       </div>

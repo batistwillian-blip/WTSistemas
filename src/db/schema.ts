@@ -211,6 +211,34 @@ export const integrationSettings = pgTable("config_integracao", {
   enabled: boolean("ativa").notNull().default(true),
   importReceivables: boolean("importar_receber").notNull().default(true),
   importPayables: boolean("importar_pagar").notNull().default(true),
+  importSales: boolean("importar_vendas").notNull().default(true),
   updatedAt: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   updatedBy: integer("atualizado_por").references(() => users.id),
 });
+
+/** Vendas (notas de saída) importadas do CHServer, só para consulta. O total do dia vira uma entrada no caixa. */
+export const sales = pgTable(
+  "vendas",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("empresa_id")
+      .notNull()
+      .references(() => companies.id),
+    externalId: text("id_externo").notNull().unique(),
+    number: text("numero"),
+    date: date("data").notNull(),
+    time: text("hora"),
+    customer: text("cliente"),
+    total: cents("total").notNull(),
+    returned: cents("devolvido").notNull().default(0),
+    discount: cents("desconto").notNull().default(0),
+    status: text("situacao"),
+    model: text("modelo"),
+    payment: jsonb("forma_pagamento"),
+    items: jsonb("itens"),
+    canceled: boolean("cancelada").notNull().default(false),
+    updatedAt: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("excluido_em", { withTimezone: true }),
+  },
+  (t) => [index("vendas_empresa_data_idx").on(t.companyId, t.date)],
+);

@@ -5,13 +5,13 @@ Controle financeiro das empresas **Primetech Loja**, **Aura Educa** e **PrimeTec
 ## O que tem
 
 - **Login com e-mail e senha.** Senhas guardadas com argon2id, sessão em cookie `httpOnly` que expira em 12 horas, bloqueio de 15 minutos após 5 tentativas erradas e troca obrigatória da senha provisória no primeiro acesso.
-- **Menu por empresa** (visão geral, lançamentos, a pagar e receber, projeção, ajustes) e **Consolidado** (visão geral, a pagar e receber, projeção, entre empresas).
+- **Menu por empresa** (visão geral, lançamentos, vendas na empresa ligada ao CHServer, a pagar e receber, projeção, ajustes) e **Consolidado** (visão geral, a pagar e receber, projeção, entre empresas).
 - **Permissões por empresa**: somente leitura, lança e edita, ou gestor (também exclui e configura contas e categorias). Administradores veem tudo. A permissão é conferida no servidor em toda tela e toda ação.
 - **Lançamentos** com conta (caixa físico, banco, carteira), categoria, vencimento e baixa. Pendente = conta a pagar/receber. Opção de repetir todo mês.
 - **Entre empresas**: empréstimo, devolução, aporte ou transferência simples. Gera a saída na origem e a entrada no destino; no consolidado se anulam. Mostra quem deve a quem.
 - **Projeção** de 30, 60 ou 90 dias com menor saldo e alerta de saldo negativo.
 - **Log de alterações** com quem, quando, IP e valores antes/depois. O banco recusa alteração ou exclusão desse log (trigger).
-- **Integração CHServer (Integrador BI)**, somente leitura: configurada pelo administrador em Administração → Integrador BI (endereço, CNPJ, chave e token, que fica cifrado no banco), com botões Testar conexão e Importar agora. Importa os títulos de Receber e Pagar a cada 15 minutos enquanto o servidor está no ar.
+- **Integração CHServer (Integrador BI)**, somente leitura: configurada pelo administrador em Administração → Integrador BI (endereço, CNPJ, chave e token, que fica cifrado no banco), com botões Testar conexão e Importar agora. Importa as contas a pagar e as vendas (notas de saída) a cada 15 minutos enquanto o servidor está no ar. Contas a receber não são importadas.
 
 ## Tecnologia
 
@@ -59,6 +59,6 @@ Use sempre HTTPS (o cookie de sessão é marcado como `secure` em produção).
 
 ## Integração CHServer
 
-Só usa `GET` nos recursos `Receber`, `Pagar`, `NFSaida` e `Empresa`; qualquer outro recurso é recusado no código (sem PIX, sem contas bancárias, sem escrita). Cada título vira um lançamento com chave única `receber:<CHAVE>` / `pagar:<CHAVE>`, então rodar de novo atualiza em vez de duplicar. `DATABAIXA`/`DATAPAGAMENTO` preenchida = realizado. Lançamentos importados não podem ser editados no caixa; a correção é feita no CHServer.
+Só usa `GET` nos recursos `Pagar`, `NFSaida` e `Empresa` (`Receber` fica liberado no cliente, mas não é importado); qualquer outro recurso é recusado no código (sem PIX, sem contas bancárias, sem escrita). Cada título a pagar vira um lançamento com chave única `pagar:<CHAVE>`, então rodar de novo atualiza em vez de duplicar; `DATAPAGAMENTO` preenchida = pago, e títulos que somem do CHServer são removidos. As notas de saída dos últimos 90 dias ficam na tela **Vendas** e o total líquido de cada dia (sem canceladas e devoluções) entra no caixa como um lançamento recebido `vendas:<AAAA-MM-DD>`. Lançamentos importados não podem ser editados no caixa; a correção é feita no CHServer.
 
-Pendente de confirmar com dados reais: significado de `STATUS`/`TIPO`, títulos cancelados, baixas parciais e o uso de `NFSaida` para o faturamento diário.
+Pendente de confirmar com dados reais: baixas parciais e a separação das vendas por forma de pagamento (cartão a prazo, por exemplo).

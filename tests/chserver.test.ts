@@ -96,3 +96,36 @@ describe("chGet", () => {
     await expect(chGet(cfg, "Pedido")).rejects.toThrow("não permitido");
   });
 });
+
+import { mapSale, saleNet } from "@/lib/chserver";
+
+describe("mapSale", () => {
+  it("converte a nota de saída do exemplo da documentação", () => {
+    const s = mapSale({
+      CHAVE: 1905,
+      NUMERONF: "000004",
+      DATANF: "2025-06-10T00:00:00.000-03:00",
+      HORASAIDA: 0.640810185185185,
+      CHAVECLIFOR: 10,
+      TOTALNF: 5.88,
+      VALORDEVOLV: 0.0,
+      DESCONTO: 0.0,
+      STATUS: "FATURADA",
+      MODELO: "01",
+      FORMAPGTO: [],
+      ITENS: [{ PRODUTO: "PRODUTO 001040", QTDE: 1.0, VLRTOTAL: 2.59 }],
+    })!;
+    expect(s.externalId).toBe("nf:1905");
+    expect(s.date).toBe("2025-06-10");
+    expect(s.time).toBe("15:23");
+    expect(s.total).toBe(588);
+    expect(s.canceled).toBe(false);
+    expect(s.items).toEqual([{ produto: "PRODUTO 001040", qtde: 1, total: 259 }]);
+    expect(saleNet(s)).toBe(588);
+  });
+  it("nota cancelada e devolução", () => {
+    expect(saleNet({ total: 1000, returned: 300, canceled: false })).toBe(700);
+    expect(mapSale({ CHAVE: 1, DATANF: "01.10.2026", TOTALNF: 10, STATUS: "CANCELADA" })!.canceled).toBe(true);
+    expect(mapSale({ DATANF: "01.10.2026", TOTALNF: 10 })).toBeNull();
+  });
+});

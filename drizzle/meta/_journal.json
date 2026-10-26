@@ -29,6 +29,13 @@
       "when": 1793044513664,
       "tag": "0003_importar_por_tipo",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793048799011,
+      "tag": "0004_vendas",
+      "breakpoints": true
     }
   ]
 }

@@ -158,3 +158,62 @@ export function splitBaseUrl(baseUrl: string): { host: string; port: string } {
   const m = /^(?:http:\/\/)?(.+?)(?::(\d+))?$/i.exec(baseUrl);
   return { host: m?.[1] ?? baseUrl, port: m?.[2] ?? "" };
 }
+
+export type ChSale = {
+  externalId: string;
+  number: string | null;
+  date: string;
+  time: string | null;
+  customer: string | null;
+  total: number;
+  returned: number;
+  discount: number;
+  status: string | null;
+  model: string | null;
+  payment: unknown;
+  items: { produto: string; qtde: number; total: number }[];
+  canceled: boolean;
+};
+
+/** HORASAIDA vem como fração do dia (0,6408 = 15:22). */
+function fractionToTime(v: unknown): string | null {
+  if (typeof v !== "number" || !Number.isFinite(v) || v <= 0 || v >= 1) return null;
+  const mins = Math.round(v * 24 * 60);
+  return `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+}
+
+/** Converte uma nota de saída (NFSaida) em venda. Retorna null se faltar dado essencial. */
+export function mapSale(r: Record<string, unknown>): ChSale | null {
+  if (r.CHAVE === undefined || r.CHAVE === null || r.CHAVE === "") return null;
+  const date = parseChDate(r.DATANF);
+  const total = parseChMoney(r.TOTALNF);
+  if (!date || total === null) return null;
+  const status = typeof r.STATUS === "string" ? r.STATUS.trim() : null;
+  const items = Array.isArray(r.ITENS)
+    ? r.ITENS.slice(0, 200).map((i: Record<string, unknown>) => ({
+        produto: String(i.PRODUTO ?? "").slice(0, 120),
+        qtde: Number(i.QTDE) || 0,
+        total: parseChMoney(i.VLRTOTAL) ?? 0,
+      }))
+    : [];
+  return {
+    externalId: `nf:${String(r.CHAVE)}`,
+    number: r.NUMERONF ? String(r.NUMERONF) : null,
+    date,
+    time: fractionToTime(r.HORASAIDA),
+    customer: r.CHAVECLIFOR != null && r.CHAVECLIFOR !== "" ? `Cliente CH ${String(r.CHAVECLIFOR)}` : null,
+    total,
+    returned: parseChMoney(r.VALORDEVOLV) ?? 0,
+    discount: parseChMoney(r.DESCONTO) ?? 0,
+    status,
+    model: r.MODELO ? String(r.MODELO) : null,
+    payment: Array.isArray(r.FORMAPGTO) ? r.FORMAPGTO : null,
+    items,
+    canceled: !!status && /CANCEL|DENEG|INUTIL/i.test(status),
+  };
+}
+
+/** Valor que entra no caixa: total da nota menos devoluções; nota cancelada vale zero. */
+export function saleNet(s: Pick<ChSale, "total" | "returned" | "canceled">): number {
+  return s.canceled ? 0 : Math.max(0, s.total - s.returned);
+}

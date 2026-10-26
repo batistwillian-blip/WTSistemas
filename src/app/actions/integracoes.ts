@@ -40,9 +40,11 @@ export async function saveChSettings(_prev: ActionState, fd: FormData): Promise<
     const admin = await requireAdmin();
     const { cfg, account, current, tokenChanged } = await readForm(fd);
     const enabled = fd.get("enabled") !== "off";
-    const importReceivables = fd.get("importReceivables") === "on";
+    // O contas a receber do CH não é usado e nunca é importado.
+    const importReceivables = false;
     const importPayables = fd.get("importPayables") === "on";
-    if (!importReceivables && !importPayables) throw new UserError("Marque pelo menos um tipo de título para importar.");
+    const importSales = fd.get("importSales") === "on";
+    if (!importPayables && !importSales) throw new UserError("Marque o que importar: contas a pagar e/ou vendas.");
     const values = {
       baseUrl: cfg.baseUrl,
       cnpj: cfg.cnpj,
@@ -53,6 +55,7 @@ export async function saveChSettings(_prev: ActionState, fd: FormData): Promise<
       enabled,
       importReceivables,
       importPayables,
+      importSales,
       updatedAt: new Date(),
       updatedBy: admin.id,
     };
@@ -63,7 +66,7 @@ export async function saveChSettings(_prev: ActionState, fd: FormData): Promise<
     // O token nunca vai para o log: registramos apenas se ele foi trocado.
     const visible = (v: typeof values | typeof current) =>
       v && { endereco: v.baseUrl, cnpj: v.cnpj, chave: v.companyKey, empresa: v.companyId, conta: v.accountId, ativa: v.enabled,
-        receber: v.importReceivables, pagar: v.importPayables };
+        pagar: v.importPayables, vendas: v.importSales };
     await logChange({
       user: admin,
       companyId: account.companyId,
@@ -102,8 +105,6 @@ export async function clearImportedReceivables(_prev: ActionState): Promise<Acti
   return guard(async () => {
     const admin = await requireAdmin();
     const [settings] = await db.select().from(integrationSettings).where(eq(integrationSettings.source, "chserver"));
-    if (settings?.importReceivables !== false)
-      throw new UserError("Primeiro desmarque “Importar contas a receber” e salve; senão a próxima importação traz tudo de volta.");
     const rows = await db
       .update(transactions)
       .set({ deletedAt: new Date() })
@@ -111,7 +112,7 @@ export async function clearImportedReceivables(_prev: ActionState): Promise<Acti
       .returning({ id: transactions.id, amount: transactions.amount, companyId: transactions.companyId });
     await logChange({
       user: admin,
-      companyId: settings.companyId,
+      companyId: settings?.companyId ?? null,
       action: "limpar_receber_importado",
       entity: "integracao_chserver",
       after: { removidos: rows.length, valorTotal: rows.reduce((s, r) => s + r.amount, 0) },

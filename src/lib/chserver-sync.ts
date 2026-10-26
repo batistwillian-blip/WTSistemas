@@ -1,10 +1,10 @@
 // Sincronização dos títulos de Receber e Pagar do CHServer para os lançamentos da empresa configurada.
 // Usado pela importação automática, pelo botão do administrador, pela rota agendada e pelo script.
-import { and, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, like, lte, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { accounts, auditLog, companies, integrationRuns, integrationSettings, transactions } from "@/db/schema";
-import { chGet, mapTitle, readChConfig, toChDate, type ChConfig, type ChTitle } from "./chserver";
-import { addDays, today } from "./format";
+import { accounts, auditLog, companies, integrationRuns, integrationSettings, sales, transactions } from "@/db/schema";
+import { chGet, mapSale, mapTitle, readChConfig, toChDate, type ChConfig, type ChSale, type ChTitle } from "./chserver";
+import { addDays, formatMoney, today } from "./format";
 import { decryptSecret } from "./secret-box";
 
 export type SyncResult = { ok: boolean; message: string; created: number; updated: number };
@@ -13,7 +13,9 @@ export type ChSettings = {
   companyId: number;
   accountId: number;
   origin: "tela" | "variaveis";
-  kinds: ("Receber" | "Pagar")[];
+  // O contas a receber do CH não é usado: só Pagar é importado.
+  kinds: "Pagar"[];
+  sales: boolean;
 };
 
 // Janela de vencimentos lida a cada importação. Títulos antigos em aberto também são atualizados.
@@ -30,7 +32,8 @@ export async function loadChSettings(): Promise<ChSettings | null> {
       companyId: row.companyId,
       accountId: row.accountId,
       origin: "tela",
-      kinds: [...(row.importReceivables ? (["Receber"] as const) : []), ...(row.importPayables ? (["Pagar"] as const) : [])],
+      kinds: row.importPayables ? ["Pagar"] : [],
+      sales: row.importSales,
     };
   }
   const cfg = readChConfig();
@@ -44,7 +47,7 @@ export async function loadChSettings(): Promise<ChSettings | null> {
     .from(accounts)
     .where(and(eq(accounts.companyId, company.id), eq(accounts.name, accountName)));
   if (!account) throw new Error(`Conta "${accountName}" não encontrada em ${company.name}.`);
-  return { cfg, companyId: company.id, accountId: account.id, origin: "variaveis", kinds: ["Receber", "Pagar"] };
+  return { cfg, companyId: company.id, accountId: account.id, origin: "variaveis", kinds: ["Pagar"], sales: true };
 }
 
 /** Testa a conexão lendo o cadastro da empresa no CHServer (somente leitura). */
@@ -79,7 +82,7 @@ async function runSync(triggeredBy: { id: number; name: string } | null): Promis
     const settings = await loadChSettings();
     if (!settings) return finish({ ok: false, message: "Integração não configurada.", created: 0, updated: 0 });
     const { cfg, companyId, accountId, kinds } = settings;
-    if (kinds.length === 0) return finish({ ok: false, message: "Nenhum tipo de título marcado para importar.", created: 0, updated: 0 });
+    if (kinds.length === 0 && !settings.sales) return finish({ ok: false, message: "Nada marcado para importar.", created: 0, updated: 0 });
 
     const fromIso = addDays(today(), -PAST_DAYS);
     const toIso = addDays(today(), FUTURE_DAYS);
@@ -148,14 +151,21 @@ async function runSync(triggeredBy: { id: number; name: string } | null): Promis
     const removed = suspicious ? 0 : gone.length;
     const warning = suspicious ? ` Atenção: ${gone.length} títulos não vieram nesta leitura; por segurança nada foi removido.` : "";
 
-    const message = `${titles.length} títulos lidos (${kinds.join(" e ")}): ${created} novos, ${updated} atualizados${removed ? `, ${removed} removidos por não existirem mais no CHServer` : ""}.${warning}`;
+    const salesInfo = settings.sales ? await syncSales(cfg, companyId, accountId) : null;
+    const parts: string[] = [];
+    if (kinds.length)
+      parts.push(
+        `Contas a pagar: ${titles.length} lidas, ${created} novas, ${updated} atualizadas${removed ? `, ${removed} removidas por não existirem mais no CHServer` : ""}.${warning}`,
+      );
+    if (salesInfo) parts.push(salesInfo.message);
+    const message = parts.join(" ");
     await db.insert(auditLog).values({
       userId: triggeredBy?.id ?? null,
       userName: triggeredBy?.name ?? "Importação automática",
       companyId,
       action: "sincronizar",
       entity: "integracao_chserver",
-      after: { created, updated, removidos: removed, lidos: titles.length, tipos: kinds },
+      after: { created, updated, removidos: removed, lidos: titles.length, tipos: kinds, vendas: salesInfo?.count ?? null },
     });
     return finish({ ok: true, message, created, updated });
   } catch (e) {
@@ -172,4 +182,73 @@ export async function lastRunAt(): Promise<Date | null> {
     .from(integrationRuns)
     .where(eq(integrationRuns.source, "chserver"));
   return row?.at ? new Date(row.at) : null;
+}
+
+const SALES_DAYS = 90;
+
+/**
+ * Importa as notas de saída dos últimos 90 dias para a tabela de vendas e mantém uma entrada por dia no caixa
+ * ("Vendas do dia"), com o total das notas menos devoluções. Notas canceladas não contam.
+ */
+async function syncSales(cfg: ChConfig, companyId: number, accountId: number): Promise<{ count: number; message: string }> {
+  const fromIso = addDays(today(), -SALES_DAYS);
+  const toIso = today();
+  const records = await chGet(cfg, "NFSaida", [toChDate(fromIso), toChDate(toIso)]);
+  const list = records.map(mapSale).filter((s): s is ChSale => s !== null);
+  const now = new Date();
+  for (const s of list) {
+    await db
+      .insert(sales)
+      .values({ ...s, companyId, updatedAt: now })
+      .onConflictDoUpdate({ target: sales.externalId, set: { ...s, companyId, updatedAt: now, deletedAt: null } });
+  }
+  // Notas que sumiram do CHServer dentro da janela saem da lista (com a mesma trava contra remoção em massa).
+  const seen = new Set(list.map((s) => s.externalId));
+  const existing = await db
+    .select({ id: sales.id, externalId: sales.externalId })
+    .from(sales)
+    .where(and(eq(sales.companyId, companyId), isNull(sales.deletedAt), gte(sales.date, fromIso), lte(sales.date, toIso)));
+  const gone = existing.filter((e) => !seen.has(e.externalId));
+  if (gone.length && !(gone.length > 20 && gone.length > existing.length / 2)) {
+    await db.update(sales).set({ deletedAt: now }).where(inArray(sales.id, gone.map((g) => g.id)));
+  }
+
+  // Uma entrada por dia no caixa, recalculada a partir das vendas guardadas.
+  const daily = await db
+    .select({
+      date: sales.date,
+      n: sql<number>`count(*) filter (where not ${sales.canceled})::int`,
+      net: sql<string>`coalesce(sum(greatest(${sales.total} - ${sales.returned}, 0)) filter (where not ${sales.canceled}), 0)`,
+    })
+    .from(sales)
+    .where(and(eq(sales.companyId, companyId), isNull(sales.deletedAt), gte(sales.date, fromIso), lte(sales.date, toIso)))
+    .groupBy(sales.date);
+  const byDay = new Map(daily.map((d) => [d.date, { n: d.n, net: Number(d.net) }]));
+  const current = await db
+    .select({ id: transactions.id, externalId: transactions.externalId, dueDate: transactions.dueDate })
+    .from(transactions)
+    .where(and(eq(transactions.source, "chserver"), like(transactions.externalId, "vendas:%"), isNull(transactions.deletedAt)));
+  for (const [date, d] of byDay) {
+    if (d.net <= 0) continue;
+    const values = {
+      type: "entrada" as const,
+      description: `Vendas do dia ${date.slice(8, 10)}/${date.slice(5, 7)} (${d.n} ${d.n === 1 ? "nota" : "notas"})`,
+      amount: d.net,
+      dueDate: date,
+      paidAt: date,
+      externalCategory: "Vendas (CHServer)",
+    };
+    await db
+      .insert(transactions)
+      .values({ ...values, companyId, accountId, source: "chserver", externalId: `vendas:${date}` })
+      .onConflictDoUpdate({ target: [transactions.source, transactions.externalId], set: { ...values, deletedAt: null, updatedAt: now } });
+  }
+  const stale = current.filter((c) => c.dueDate >= fromIso && c.dueDate <= toIso && !((byDay.get(c.dueDate)?.net ?? 0) > 0));
+  if (stale.length) await db.update(transactions).set({ deletedAt: now }).where(inArray(transactions.id, stale.map((t) => t.id)));
+
+  const total = [...byDay.values()].reduce((s, d) => s + d.net, 0);
+  return {
+    count: list.length,
+    message: `Vendas: ${list.length} notas dos últimos ${SALES_DAYS} dias, ${formatMoney(total)} lançados no caixa por dia.`,
+  };
 }
