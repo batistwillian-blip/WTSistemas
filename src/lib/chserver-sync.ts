@@ -4,7 +4,7 @@ import { and, eq, gte, inArray, isNull, like, lte, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { accounts, auditLog, companies, integrationRuns, integrationSettings, sales, transactions } from "@/db/schema";
 import { chGet, mapSale, mapTitle, readChConfig, titleState, toChDate, type ChConfig, type ChSale, type ChTitle } from "./chserver";
-import { addDays, formatMoney, today } from "./format";
+import { addDays, addMonths, formatMoney, monthEnd, monthStart, today } from "./format";
 import { decryptSecret } from "./secret-box";
 
 export type SyncResult = { ok: boolean; message: string; created: number; updated: number };
@@ -17,6 +17,8 @@ export type ChSettings = {
   kinds: "Pagar"[];
   sales: boolean;
   balance: BalanceRules;
+  // Ainda falta trazer o histórico de vendas (12 meses) uma vez.
+  salesHistory: boolean;
 };
 
 /** O que do CH pode mexer no saldo. Por padrão nada: o saldo é lançado à mão como saldo inicial. */
@@ -44,6 +46,7 @@ export async function loadChSettings(): Promise<ChSettings | null> {
       kinds: row.importPayables ? ["Pagar"] : [],
       sales: row.importSales,
       balance: { paid: row.paidAffectBalance, sales: row.salesAffectBalance, from: row.balanceFrom },
+      salesHistory: !row.salesBackfilledAt,
     };
   }
   const cfg = readChConfig();
@@ -57,7 +60,7 @@ export async function loadChSettings(): Promise<ChSettings | null> {
     .from(accounts)
     .where(and(eq(accounts.companyId, company.id), eq(accounts.name, accountName)));
   if (!account) throw new Error(`Conta "${accountName}" não encontrada em ${company.name}.`);
-  return { cfg, companyId: company.id, accountId: account.id, origin: "variaveis", kinds: ["Pagar"], sales: true, balance: { paid: false, sales: false, from: null } };
+  return { cfg, companyId: company.id, accountId: account.id, origin: "variaveis", kinds: ["Pagar"], sales: true, balance: { paid: false, sales: false, from: null }, salesHistory: false };
 }
 
 /** Testa a conexão lendo o cadastro da empresa no CHServer (somente leitura). */
@@ -96,10 +99,9 @@ async function runSync(triggeredBy: { id: number; name: string } | null): Promis
 
     const fromIso = addDays(today(), -PAST_DAYS);
     const toIso = addDays(today(), FUTURE_DAYS);
-    const titles: ChTitle[] = [];
+    const titles: (ChTitle & { offBalance: boolean })[] = [];
     // Cancelados e excluídos no CH: saem do caixa mesmo que sejam muitos (a proteção contra resposta cortada não vale para eles).
     const discarded = new Set<string>();
-    const paidOutside = new Set<string>();
     const states: Record<string, number> = {};
     const fields = new Set<string>();
     for (const kind of kinds) {
@@ -115,12 +117,8 @@ async function runSync(triggeredBy: { id: number; name: string } | null): Promis
         }
         const t = mapTitle(kind, r);
         if (!t) continue;
-        // Pago fora das regras do saldo: não entra (nem como pago, nem como pendente).
-        if (t.paidAt && !countsInBalance(settings.balance, "paid", t.paidAt)) {
-          paidOutside.add(t.externalId);
-          continue;
-        }
-        titles.push(t);
+        // Pago fora das regras do saldo: fica guardado só para consulta (filtro "Pagos"), sem mexer no saldo.
+        titles.push({ ...t, offBalance: !!t.paidAt && !countsInBalance(settings.balance, "paid", t.paidAt) });
       }
     }
 
@@ -140,12 +138,13 @@ async function runSync(triggeredBy: { id: number; name: string } | null): Promis
             dueDate: t.dueDate,
             paidAt: t.paidAt,
             externalCategory: t.externalCategory,
+            offBalance: t.offBalance,
             deletedAt: null,
             updatedAt: new Date(),
           },
           // Só regrava se algo mudou (inclusive título que tinha sumido e voltou), para o contador refletir alterações reais.
-          setWhere: sql`(${transactions.amount}, ${transactions.dueDate}, ${transactions.paidAt}, ${transactions.description}, ${transactions.deletedAt} is null)
-            is distinct from (excluded.valor, excluded.vencimento, excluded.pago_em, excluded.descricao, true)`,
+          setWhere: sql`(${transactions.amount}, ${transactions.dueDate}, ${transactions.paidAt}, ${transactions.description}, ${transactions.offBalance}, ${transactions.deletedAt} is null)
+            is distinct from (excluded.valor, excluded.vencimento, excluded.pago_em, excluded.descricao, excluded.fora_do_saldo, true)`,
         })
         .returning({ inserted: sql<boolean>`(xmax = 0)` });
       if (!row) continue;
@@ -158,7 +157,7 @@ async function runSync(triggeredBy: { id: number; name: string } | null): Promis
     const seen = new Set(titles.map((t) => t.externalId));
     const prefixes = kinds.map((k) => k.toLowerCase() + ":");
     const existing = await db
-      .select({ id: transactions.id, externalId: transactions.externalId, paidAt: transactions.paidAt })
+      .select({ id: transactions.id, externalId: transactions.externalId })
       .from(transactions)
       .where(
         and(
@@ -168,18 +167,9 @@ async function runSync(triggeredBy: { id: number; name: string } | null): Promis
           lte(transactions.dueDate, toIso),
         ),
       );
-    // Pagos fora das regras do saldo que já estavam como pagos ficam como estão: só saem pelo botão "Zerar o saldo importado".
-    // Os que estavam pendentes saem, porque não são mais conta a pagar.
-    const ours = existing.filter(
-      (e) =>
-        e.externalId &&
-        prefixes.some((p) => e.externalId!.startsWith(p)) &&
-        !seen.has(e.externalId) &&
-        !(paidOutside.has(e.externalId) && e.paidAt),
-    );
-    const known = (id: string) => discarded.has(id) || paidOutside.has(id);
-    const canceled = ours.filter((e) => known(e.externalId!));
-    const gone = ours.filter((e) => !known(e.externalId!));
+    const ours = existing.filter((e) => e.externalId && prefixes.some((p) => e.externalId!.startsWith(p)) && !seen.has(e.externalId));
+    const canceled = ours.filter((e) => discarded.has(e.externalId!));
+    const gone = ours.filter((e) => !discarded.has(e.externalId!));
     // Proteção: se a resposta veio vazia ou cortada, não apaga em massa o que só "sumiu"; só avisa.
     const suspicious = gone.length > 20 && gone.length > existing.length / 2;
     const toRemove = suspicious ? canceled : ours;
@@ -192,13 +182,14 @@ async function runSync(triggeredBy: { id: number; name: string } | null): Promis
     const removed = toRemove.length;
     const warning = suspicious ? ` Atenção: ${gone.length} títulos não vieram nesta leitura; por segurança eles não foram removidos.` : "";
     const open = titles.filter((t) => !t.paidAt);
+    const paidOff = titles.filter((t) => t.offBalance).length;
     const openTotal = open.reduce((sum, t) => sum + t.amount, 0);
 
-    const salesInfo = settings.sales ? await syncSales(cfg, companyId, accountId, settings.balance) : null;
+    const salesInfo = settings.sales ? await syncSales(cfg, companyId, accountId, settings.balance, settings.salesHistory) : null;
     const parts: string[] = [];
     if (kinds.length)
       parts.push(
-        `Contas a pagar: ${open.length} em aberto (${formatMoney(openTotal)}) e ${titles.length - open.length} pagas no saldo${paidOutside.size ? ` (${paidOutside.size} pagas fora do saldo não entram)` : ""}; ${created} novas, ${updated} atualizadas${removed ? `, ${removed} removidas por estarem canceladas, excluídas ou não existirem mais no CHServer` : ""}${discarded.size ? `; ${discarded.size} canceladas ou excluídas no CH foram ignoradas` : ""}.${warning}`,
+        `Contas a pagar: ${open.length} em aberto (${formatMoney(openTotal)}) e ${titles.length - open.length} pagas${paidOff ? ` (${paidOff} só para consulta, fora do saldo)` : ""}; ${created} novas, ${updated} atualizadas${removed ? `, ${removed} removidas por estarem canceladas, excluídas ou não existirem mais no CHServer` : ""}${discarded.size ? `; ${discarded.size} canceladas ou excluídas no CH foram ignoradas` : ""}.${warning}`,
       );
     if (salesInfo) parts.push(salesInfo.message);
     const message = parts.join(" ");
@@ -240,24 +231,46 @@ export async function lastRunAt(): Promise<Date | null> {
   return row?.at ? new Date(row.at) : null;
 }
 
-const SALES_DAYS = 90;
+const SALES_DAYS = 40;
+const SALES_HISTORY_MONTHS = 13;
 
-/**
- * Importa as notas de saída dos últimos 90 dias para a tabela de vendas e mantém uma entrada por dia no caixa
- * ("Vendas do dia"), com o total das notas menos devoluções. Notas canceladas não contam.
- */
-async function syncSales(cfg: ChConfig, companyId: number, accountId: number, balance: BalanceRules): Promise<{ count: number; message: string }> {
-  const fromIso = addDays(today(), -SALES_DAYS);
-  const toIso = today();
-  const records = await chGet(cfg, "NFSaida", [toChDate(fromIso), toChDate(toIso)]);
-  const list = records.map(mapSale).filter((s): s is ChSale => s !== null);
-  const now = new Date();
+async function saveSales(list: ChSale[], companyId: number, now: Date) {
   for (const s of list) {
     await db
       .insert(sales)
       .values({ ...s, companyId, updatedAt: now })
       .onConflictDoUpdate({ target: sales.externalId, set: { ...s, companyId, updatedAt: now, deletedAt: null } });
   }
+}
+
+/**
+ * Importa as notas de saída dos últimos 40 dias para a tabela de vendas (na primeira vez, também os últimos 13 meses,
+ * mês a mês, para o comparativo) e mantém uma entrada por dia no caixa ("Vendas do dia") quando as vendas contam no saldo.
+ */
+async function syncSales(
+  cfg: ChConfig,
+  companyId: number,
+  accountId: number,
+  balance: BalanceRules,
+  needsHistory: boolean,
+): Promise<{ count: number; message: string }> {
+  const fromIso = addDays(today(), -SALES_DAYS);
+  const toIso = today();
+  const now = new Date();
+  let history = 0;
+  if (needsHistory) {
+    const start = addMonths(monthStart(today()), -(SALES_HISTORY_MONTHS - 1));
+    for (let m = start; m < fromIso; m = addMonths(m, 1)) {
+      const end = monthEnd(m) < fromIso ? monthEnd(m) : addDays(fromIso, -1);
+      const part = (await chGet(cfg, "NFSaida", [toChDate(m), toChDate(end)])).map(mapSale).filter((s): s is ChSale => s !== null);
+      await saveSales(part, companyId, now);
+      history += part.length;
+    }
+    await db.update(integrationSettings).set({ salesBackfilledAt: now }).where(eq(integrationSettings.source, "chserver"));
+  }
+  const records = await chGet(cfg, "NFSaida", [toChDate(fromIso), toChDate(toIso)]);
+  const list = records.map(mapSale).filter((s): s is ChSale => s !== null);
+  await saveSales(list, companyId, now);
   // Notas que sumiram do CHServer dentro da janela saem da lista (com a mesma trava contra remoção em massa).
   const seen = new Set(list.map((s) => s.externalId));
   const existing = await db
@@ -294,6 +307,7 @@ async function syncSales(cfg: ChConfig, companyId: number, accountId: number, ba
       dueDate: date,
       paidAt: date,
       externalCategory: "Vendas (CHServer)",
+      offBalance: false,
     };
     await db
       .insert(transactions)
@@ -309,18 +323,21 @@ async function syncSales(cfg: ChConfig, companyId: number, accountId: number, ba
   const total = [...byDay.values()].reduce((s, d) => s + d.net, 0);
   return {
     count: list.length,
-    message: balance.sales
-      ? `Vendas: ${list.length} notas dos últimos ${SALES_DAYS} dias, ${formatMoney(total)} lançados no saldo por dia.`
-      : `Vendas: ${list.length} notas dos últimos ${SALES_DAYS} dias (só na tela de vendas, fora do saldo).`,
+    message:
+      (balance.sales
+        ? `Vendas: ${list.length} notas dos últimos ${SALES_DAYS} dias, ${formatMoney(total)} lançados no saldo por dia.`
+        : `Vendas: ${list.length} notas dos últimos ${SALES_DAYS} dias (só na tela de vendas, fora do saldo).`) +
+      (needsHistory ? ` Histórico de ${SALES_HISTORY_MONTHS} meses trazido: ${history} notas.` : ""),
   };
 }
 
-/** Lançamentos importados do CH que hoje mexem no saldo mas estão fora das regras salvas (pagos e vendas do dia). */
+/** Lançamentos importados do CH que hoje mexem no saldo mas estão fora das regras salvas (pagos e vendas do dia). Zerar marca como fora do saldo, sem apagar. */
 export function importedOutsideBalance(rules: BalanceRules) {
   const outside = (flag: boolean) => (flag ? (rules.from ? sql`${transactions.paidAt} < ${rules.from}` : sql`false`) : sql`true`);
   return and(
     eq(transactions.source, "chserver"),
     isNull(transactions.deletedAt),
+    eq(transactions.offBalance, false),
     sql`${transactions.paidAt} is not null`,
     sql`((${transactions.externalId} like 'pagar:%' and ${outside(rules.paid)}) or (${transactions.externalId} like 'vendas:%' and ${outside(rules.sales)}))`,
   );

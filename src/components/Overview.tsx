@@ -52,7 +52,7 @@ export async function Overview({ companies, consolidated }: { companies: Company
 
   const upcoming = relevant.slice(0, 8);
   const negatives = perCompany.filter((p) => p.projection.minBalance < 0);
-  const contasHref = consolidated ? "/consolidado/contas" : `/empresa/${companies[0].slug}/contas`;
+  const contasHref = consolidated ? "/consolidado/pagar" : `/empresa/${companies[0].slug}/pagar`;
   const monthName = MONTHS[Number(d0.slice(5, 7)) - 1];
 
   return (

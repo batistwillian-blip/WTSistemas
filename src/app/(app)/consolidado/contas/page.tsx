@@ -1,16 +1,7 @@
-import { PageHead } from "@/components/PageHead";
-import { PendingList } from "@/components/PendingList";
-import { consolidatedContext, param, type SearchParams } from "@/lib/page";
+import { redirect } from "next/navigation";
+import { param, type SearchParams } from "@/lib/page";
 
+// A tela antiga juntava a pagar e a receber; agora cada um tem a sua no menu Financeiro.
 export default async function ConsolidadoContasPage({ searchParams }: { searchParams: SearchParams }) {
-  const sp = await searchParams;
-  const t = param(sp, "tipo");
-  const filter = t === "receber" || t === "pagar" ? t : "todas";
-  const { companies } = await consolidatedContext();
-  return (
-    <>
-      <PageHead context="Consolidado" title="Contas a pagar e a receber" />
-      <PendingList companies={companies} consolidated filter={filter} basePath="/consolidado/contas" />
-    </>
-  );
+  redirect(`/consolidado/${param(await searchParams, "tipo") === "receber" ? "receber" : "pagar"}`);
 }

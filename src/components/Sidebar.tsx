@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
-export type NavLink = { href: string; label: string; count?: number };
+// heading abre um subgrupo (ex.: "Financeiro"); sub recua o link para dentro dele.
+export type NavLink = { href: string; label: string; count?: number; heading?: string; sub?: boolean };
 export type NavGroup = {
   key: string;
   title: string;
@@ -87,10 +88,17 @@ export function SidebarNav({ groups }: { groups: NavGroup[] }) {
               {isOpen && (
                 <div className="grp-items">
                   {g.links.map((l) => (
-                    <Link key={l.href} href={l.href} className={`nav-i ${l.href === active ? "on" : ""}`} aria-current={l.href === active ? "page" : undefined}>
-                      {l.label}
-                      {l.count ? <span className="count">{l.count}</span> : null}
-                    </Link>
+                    <div key={l.href} style={{ display: "contents" }}>
+                      {l.heading && <div className="nav-sub">{l.heading}</div>}
+                      <Link
+                        href={l.href}
+                        className={`nav-i ${l.sub ? "sub" : ""} ${l.href === active ? "on" : ""}`}
+                        aria-current={l.href === active ? "page" : undefined}
+                      >
+                        {l.label}
+                        {l.count ? <span className="count">{l.count}</span> : null}
+                      </Link>
+                    </div>
                   ))}
                 </div>
               )}

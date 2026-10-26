@@ -4,7 +4,8 @@ import { db } from "@/db";
 import { accounts, categories, companies, transactions, transfers } from "@/db/schema";
 import { today } from "./format";
 
-const notDeleted = isNull(transactions.deletedAt);
+// Lançamentos "fora do saldo" (pagos importados do CH só para consulta) não aparecem em saldo, totais nem listas de lançamentos.
+const notDeleted = and(isNull(transactions.deletedAt), eq(transactions.offBalance, false));
 const signedAmount = sql<number>`case when ${transactions.type} = 'entrada' then ${transactions.amount} else -${transactions.amount} end`;
 
 export async function getAccounts(companyIds: number[], onlyActive = false) {
@@ -34,7 +35,7 @@ export async function accountBalances(companyIds: number[], until = today()) {
       name: accounts.name,
       kind: accounts.kind,
       active: accounts.active,
-      balance: sql<string>`${accounts.initialBalance} + coalesce(sum(${signedAmount}) filter (where ${transactions.paidAt} is not null and ${transactions.paidAt} <= ${until} and ${transactions.deletedAt} is null), 0)`,
+      balance: sql<string>`${accounts.initialBalance} + coalesce(sum(${signedAmount}) filter (where ${transactions.paidAt} is not null and ${transactions.paidAt} <= ${until} and ${transactions.deletedAt} is null and not ${transactions.offBalance}), 0)`,
     })
     .from(accounts)
     .leftJoin(transactions, eq(transactions.accountId, accounts.id))
@@ -166,4 +167,86 @@ export async function listTransfers(companyIds: number[]) {
 
 export async function allCompanies() {
   return db.select().from(companies).orderBy(asc(companies.sortOrder), asc(companies.name));
+}
+
+/** Contas já pagas/recebidas no período (pela data do pagamento), inclusive as importadas do CH só para consulta. */
+export async function paidBills(companyIds: number[], type: "entrada" | "saida", from: string, to: string, excludeTransfers: boolean) {
+  if (companyIds.length === 0) return [];
+  return db
+    .select({
+      id: transactions.id,
+      companyId: transactions.companyId,
+      description: transactions.description,
+      counterpart: transactions.counterpart,
+      amount: transactions.amount,
+      dueDate: transactions.dueDate,
+      paidAt: transactions.paidAt,
+      source: transactions.source,
+      offBalance: transactions.offBalance,
+      accountName: accounts.name,
+    })
+    .from(transactions)
+    .innerJoin(accounts, eq(accounts.id, transactions.accountId))
+    .where(
+      and(
+        inArray(transactions.companyId, companyIds),
+        isNull(transactions.deletedAt),
+        eq(transactions.type, type),
+        isNotNull(transactions.paidAt),
+        gte(transactions.paidAt, from),
+        lte(transactions.paidAt, to),
+        // "Vendas do dia" não é conta a receber: fica na tela de vendas.
+        sql`coalesce(${transactions.externalId}, '') not like 'vendas:%'`,
+        excludeTransfers ? isNull(transactions.transferId) : undefined,
+      ),
+    )
+    .orderBy(desc(transactions.paidAt), desc(transactions.id))
+    .limit(1000);
+}
+
+/** Entradas e saídas realizadas por mês (AAAA-MM), sem transferências entre empresas. */
+export async function monthlyTotals(companyIds: number[], from: string, to: string) {
+  if (companyIds.length === 0) return [];
+  const rows = await db
+    .select({
+      month: sql<string>`to_char(${transactions.paidAt}, 'YYYY-MM')`,
+      inflow: sql<string>`coalesce(sum(${transactions.amount}) filter (where ${transactions.type} = 'entrada'), 0)`,
+      outflow: sql<string>`coalesce(sum(${transactions.amount}) filter (where ${transactions.type} = 'saida'), 0)`,
+    })
+    .from(transactions)
+    .where(
+      and(
+        inArray(transactions.companyId, companyIds),
+        notDeleted,
+        isNotNull(transactions.paidAt),
+        isNull(transactions.transferId),
+        gte(transactions.paidAt, from),
+        lte(transactions.paidAt, to),
+      ),
+    )
+    .groupBy(sql`1`);
+  return rows.map((r) => ({ month: r.month, inflow: Number(r.inflow), outflow: Number(r.outflow) }));
+}
+
+/** Totais realizados por categoria (do caixa ou do CH) no período, sem transferências entre empresas. */
+export async function categoryTotals(companyIds: number[], from: string, to: string) {
+  if (companyIds.length === 0) return [];
+  const name = sql<string>`coalesce(${categories.name}, ${transactions.externalCategory}, 'Sem categoria')`;
+  const rows = await db
+    .select({ type: transactions.type, name, total: sql<string>`sum(${transactions.amount})`, n: sql<number>`count(*)::int` })
+    .from(transactions)
+    .leftJoin(categories, eq(categories.id, transactions.categoryId))
+    .where(
+      and(
+        inArray(transactions.companyId, companyIds),
+        notDeleted,
+        isNotNull(transactions.paidAt),
+        isNull(transactions.transferId),
+        gte(transactions.paidAt, from),
+        lte(transactions.paidAt, to),
+      ),
+    )
+    .groupBy(transactions.type, name)
+    .orderBy(desc(sql`sum(${transactions.amount})`));
+  return rows.map((r) => ({ type: r.type, name: r.name, total: Number(r.total), n: r.n }));
 }

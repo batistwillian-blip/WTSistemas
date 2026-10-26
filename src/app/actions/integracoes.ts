@@ -133,7 +133,7 @@ export async function clearImportedReceivables(_prev: ActionState): Promise<Acti
   });
 }
 
-/** Tira do saldo os pagamentos e vendas do dia importados do CH que estão fora das opções de saldo. Lançamentos manuais nunca são tocados. */
+/** Tira do saldo (sem apagar) os pagamentos e vendas do dia importados do CH que estão fora das opções de saldo. Lançamentos manuais nunca são tocados. */
 export async function clearImportedBalance(_prev: ActionState): Promise<ActionState> {
   return guard(async () => {
     const admin = await requireAdmin();
@@ -142,7 +142,7 @@ export async function clearImportedBalance(_prev: ActionState): Promise<ActionSt
     const rules = { paid: settings.paidAffectBalance, sales: settings.salesAffectBalance, from: settings.balanceFrom };
     const rows = await db
       .update(transactions)
-      .set({ deletedAt: new Date() })
+      .set({ offBalance: true, updatedAt: new Date() })
       .where(importedOutsideBalance(rules))
       .returning({ id: transactions.id, amount: transactions.amount, type: transactions.type });
     await logChange({

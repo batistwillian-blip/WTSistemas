@@ -43,6 +43,13 @@
       "when": 1793057778715,
       "tag": "0005_saldo_manual",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793058191762,
+      "tag": "0006_fora_do_saldo",
+      "breakpoints": true
     }
   ]
 }

@@ -151,6 +151,8 @@ export const transactions = pgTable(
     createdAt: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("excluido_em", { withTimezone: true }),
+    // Importado do CH só para consulta (ex.: contas já pagas): fica no filtro "Pagos", mas não entra no saldo, nos totais nem nos lançamentos.
+    offBalance: boolean("fora_do_saldo").notNull().default(false),
   },
   (t) => [
     index("lancamentos_empresa_venc_idx").on(t.companyId, t.dueDate),
@@ -216,6 +218,8 @@ export const integrationSettings = pgTable("config_integracao", {
   paidAffectBalance: boolean("pagas_no_saldo").notNull().default(false),
   salesAffectBalance: boolean("vendas_no_saldo").notNull().default(false),
   balanceFrom: date("saldo_desde"),
+  // Quando o histórico de vendas de 12 meses já foi trazido (uma vez); depois só os últimos dias são relidos.
+  salesBackfilledAt: timestamp("vendas_historico_em", { withTimezone: true }),
   updatedAt: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   updatedBy: integer("atualizado_por").references(() => users.id),
 });

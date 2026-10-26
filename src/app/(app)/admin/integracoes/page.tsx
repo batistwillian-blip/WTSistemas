@@ -200,13 +200,14 @@ export default async function IntegracoesPage({ searchParams }: { searchParams: 
           <p style={{ marginBottom: 12 }}>
             Há <b>{outsideBalance.n}</b> lançamentos importados do CH mexendo no saldo fora das opções acima: pagamentos de{" "}
             <b>{formatMoney(Number(outsideBalance.out))}</b> e vendas de <b>{formatMoney(Number(outsideBalance.in))}</b>. Zere para o saldo ficar só com o
-            que você lança. As contas a pagar em aberto e a tela de vendas não são afetadas, nem os lançamentos manuais, e tudo fica registrado no log.
+            que você lança. Nada é apagado: as contas pagas continuam em Contas a pagar → Pagos, só para consulta. Contas em aberto, vendas e
+            lançamentos manuais não são afetados, e fica registrado no log.
           </p>
           <ActionForm action={clearImportedBalance} className="form">
             <div>
               <ConfirmButton
                 className="btn danger"
-                message={`Tirar do saldo ${outsideBalance.n} lançamentos importados do CH (pagamentos ${formatMoney(Number(outsideBalance.out))}, vendas ${formatMoney(Number(outsideBalance.in))})? Lançamentos manuais e contas em aberto não são afetados.`}
+                message={`Tirar do saldo ${outsideBalance.n} lançamentos importados do CH (pagamentos ${formatMoney(Number(outsideBalance.out))}, vendas ${formatMoney(Number(outsideBalance.in))})? Nada é apagado: as pagas ficam só para consulta em Contas a pagar → Pagos.`}
               >
                 Zerar o saldo importado ({outsideBalance.n} lançamentos)
               </ConfirmButton>
@@ -255,8 +256,8 @@ export default async function IntegracoesPage({ searchParams }: { searchParams: 
           </p>
           <p className="help">
             O que é importado: contas a pagar com vencimento entre 2 anos atrás e 5 anos à frente, seguindo a situação do CH (cancelado ou excluído
-            não entra; pago só entra se “Contas pagas no CH entram no saldo” estiver marcado) e as
-            vendas (notas de saída) dos últimos 90 dias. Com “Vendas do dia entram no saldo” marcado, o total vendido em cada dia entra no caixa como “Vendas do dia”;
+            não entra; pago fica em Contas a pagar → Pagos e só entra no saldo se “Contas pagas no CH entram no saldo” estiver marcado) e as
+            vendas (notas de saída): na primeira vez os últimos 12 meses, depois os últimos 40 dias a cada importação. Com “Vendas do dia entram no saldo” marcado, o total vendido em cada dia entra no caixa como “Vendas do dia”;
             notas canceladas e devoluções são descontadas. Nada disso vem marcado: o saldo é o que você lança. A cada importação, o que foi corrigido no CHServer é atualizado aqui, e o que foi excluído lá sai do caixa. O
             contas a receber do CH nunca é importado. Os lançamentos importados aparecem com a etiqueta “Automático” e não podem ser editados aqui; a correção é feita no CHServer.
           </p>

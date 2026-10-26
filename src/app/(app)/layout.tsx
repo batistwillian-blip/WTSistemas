@@ -28,8 +28,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const salesCompanyId = integration?.importSales ? integration.companyId : null;
   const overdue = overdueItems.filter((p) => p.dueDate < d0);
   const balanceOf = (list: number[]) => balances.filter((b) => list.includes(b.companyId)).reduce((s, b) => s + b.balance, 0);
-  const overdueOf = (list: number[], consolidated = false) =>
-    overdue.filter((p) => list.includes(p.companyId) && !(consolidated && p.transferId)).length;
+  const overdueOf = (list: number[], consolidated = false, type?: "entrada" | "saida") =>
+    overdue.filter((p) => list.includes(p.companyId) && !(consolidated && p.transferId) && (!type || p.type === type)).length;
+  // Menu Financeiro, igual em cada empresa e no consolidado.
+  const finance = (base: string, list: number[], consolidated = false) => [
+    { href: `${base}/pagar`, label: "Contas a pagar", count: overdueOf(list, consolidated, "saida"), heading: "Financeiro", sub: true },
+    { href: `${base}/receber`, label: "Contas a receber", count: overdueOf(list, consolidated, "entrada"), sub: true },
+    { href: `${base}/projecao`, label: "Projeção", sub: true },
+    { href: `${base}/relatorios`, label: "Relatórios", sub: true },
+  ];
 
   const groups: NavGroup[] = [];
   if (companies.length > 1) {
@@ -45,9 +52,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       overdue: n,
       links: [
         { href: "/consolidado", label: "Visão geral" },
-        { href: "/consolidado/contas", label: "A pagar e receber", count: n },
-        { href: "/consolidado/projecao", label: "Projeção" },
         { href: "/consolidado/entre-empresas", label: "Entre empresas" },
+        ...finance("/consolidado", ids, true),
       ],
     });
   }
@@ -55,14 +61,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     const base = `/empresa/${c.slug}`;
     const total = balanceOf([c.id]);
     const n = overdueOf([c.id]);
-    const links = [
+    const links: NavGroup["links"] = [
       { href: base, label: "Visão geral" },
       { href: `${base}/lancamentos`, label: "Lançamentos" },
       ...(c.id === salesCompanyId ? [{ href: `${base}/vendas`, label: "Vendas" }] : []),
-      { href: `${base}/contas`, label: "A pagar e receber", count: n },
-      { href: `${base}/projecao`, label: "Projeção" },
+      ...finance(base, [c.id]),
     ];
-    if (roleAllows(c.role, "gerir")) links.push({ href: `${base}/ajustes`, label: "Ajustes da empresa" });
+    if (roleAllows(c.role, "gerir")) links.push({ href: `${base}/ajustes`, label: "Ajustes da empresa", heading: "Configurações", sub: true });
     groups.push({
       key: c.slug,
       title: c.name,
