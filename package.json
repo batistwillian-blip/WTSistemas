@@ -10,11 +10,10 @@
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "node scripts/migrate.mjs",
-    "db:seed": "tsx scripts/seed.ts",
+    "db:migrate": "node scripts/bootstrap.mjs",
     "criar-admin": "tsx scripts/criar-admin.ts",
     "sync:chserver": "tsx scripts/sync-chserver.ts",
-    "start:prod": "node scripts/migrate.mjs && next start"
+    "start:prod": "node scripts/bootstrap.mjs && next start"
   },
   "engines": {
     "node": ">=20"

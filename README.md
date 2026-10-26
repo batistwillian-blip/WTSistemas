@@ -24,8 +24,7 @@ Requer Node 20+ e um PostgreSQL.
 ```bash
 npm install
 cp .env.example .env          # preencha DATABASE_URL
-npm run db:migrate            # cria as tabelas
-npm run db:seed               # cria as 3 empresas, contas "Caixa físico" e "Banco" e categorias iniciais
+npm run db:migrate            # cria as tabelas, as 3 empresas, contas "Caixa físico" e "Banco" e categorias iniciais
 npm run criar-admin -- seu@email.com "Seu nome"   # pede a senha no terminal
 npm run dev
 ```
@@ -39,6 +38,7 @@ Veja `.env.example`. **Nenhum segredo vai para o repositório** (ele é público
 | Variável | Para quê |
 |---|---|
 | `DATABASE_URL` | Conexão com o PostgreSQL |
+| `ADMIN_EMAIL` / `ADMIN_SENHA_INICIAL` / `ADMIN_NOME` | Criam o primeiro administrador ao subir, só se ainda não houver usuários. Troca de senha obrigatória no 1º acesso; depois apague `ADMIN_SENHA_INICIAL` |
 | `CRON_SECRET` | Segredo (32+ caracteres) que autoriza a chamada agendada de sincronização |
 | `CHSERVER_URL` | Endereço externo do CHServerWeb, ex.: `http://servidor:8080` |
 | `CHSERVER_TOKEN` | Token do Integrador BI (CHServer > Configurações > Integrador BI) |
@@ -50,9 +50,8 @@ Veja `.env.example`. **Nenhum segredo vai para o repositório** (ele é público
 
 1. Crie o banco PostgreSQL e o serviço web na hospedagem, apontando para este repositório.
 2. Cadastre as variáveis de ambiente acima.
-3. Comando de build: `npm run build`. Comando de início: `npm run start:prod` (aplica migrações e sobe o servidor).
-4. Uma única vez, rode `npm run db:seed` e `npm run criar-admin -- email "Nome"` no console da hospedagem.
-5. Agende a sincronização a cada 15 minutos:
+3. Comando de build: `npm run build`. Comando de início: `npm run start:prod` (prepara o banco, cria o primeiro administrador se preciso e sobe o servidor).
+4. Agende a sincronização a cada 15 minutos:
    `curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://SEU-DOMINIO/api/cron/chserver`
 
 Use sempre HTTPS (o cookie de sessão é marcado como `secure` em produção).
