@@ -6,7 +6,7 @@ import { db } from "@/db";
 import { accounts, integrationSettings } from "@/db/schema";
 import { requireAdmin } from "@/lib/access";
 import { logChange } from "@/lib/audit";
-import { validateChConfig } from "@/lib/chserver";
+import { buildBaseUrl, validateChConfig } from "@/lib/chserver";
 import { loadChSettings, syncChServer, testChConnection } from "@/lib/chserver-sync";
 import { guard, int, str, UserError, type ActionState } from "@/lib/form";
 import { decryptSecret, encryptSecret } from "@/lib/secret-box";
@@ -19,7 +19,7 @@ async function readForm(fd: FormData) {
   const cfg = (() => {
     try {
       return validateChConfig({
-        baseUrl: str(fd, "baseUrl", 200),
+        baseUrl: buildBaseUrl(str(fd, "host", 200), str(fd, "port", 10)),
         cnpj: str(fd, "cnpj", 30),
         companyKey: str(fd, "companyKey", 40),
         token: typedToken || decryptSecret(current!.tokenEncrypted),

@@ -6,7 +6,8 @@ import { Feedback } from "@/components/FormStatus";
 
 type Account = { id: number; label: string; company: string };
 export type ChFormInitial = {
-  baseUrl: string;
+  host: string;
+  port: string;
   cnpj: string;
   companyKey: string;
   hasToken: boolean;
@@ -30,8 +31,12 @@ export function ChSettingsForm({ initial, accounts }: { initial: ChFormInitial; 
     >
       <div className="fields">
         <label>
-          Endereço do CHServerWeb (com a porta)
-          <input name="baseUrl" defaultValue={initial.baseUrl} placeholder="cloud.chlitoral.com.br:8080" required autoComplete="off" />
+          Servidor do CHServerWeb
+          <input name="host" defaultValue={initial.host} placeholder="cloud.chlitoral.com.br" required autoComplete="off" />
+        </label>
+        <label>
+          Porta do CHServerWeb
+          <input name="port" defaultValue={initial.port} placeholder="8081" inputMode="numeric" maxLength={5} required autoComplete="off" />
         </label>
         <label>
           CNPJ da estrutura principal

@@ -140,3 +140,21 @@ export function mapTitle(kind: "Receber" | "Pagar", r: Record<string, unknown>):
     externalCategory: typeof r.DESCRPLANOCTA === "string" ? r.DESCRPLANOCTA.slice(0, 100) : null,
   };
 }
+
+/** Junta o endereço e a porta digitados em campos separados. A porta é obrigatória (o padrão 80 nunca é o do CHServerWeb). */
+export function buildBaseUrl(host: string, port: string): string {
+  const base = normalizeBaseUrl(host);
+  const p = port.trim();
+  const m = /^(https?:\/\/[^/:]+)(?::(\d+))?$/i.exec(base);
+  if (!m) throw new Error("Endereço inválido. Use só o nome do servidor, ex.: cloud.servidor.com.br");
+  const finalPort = p || m[2];
+  if (!finalPort) throw new Error("Informe a porta do CHServerWeb (ex.: 8081).");
+  if (!/^\d{1,5}$/.test(finalPort) || Number(finalPort) < 1 || Number(finalPort) > 65535) throw new Error("Porta inválida.");
+  return `${m[1]}:${finalPort}`;
+}
+
+/** Separa um endereço salvo em servidor e porta, para preencher o formulário. */
+export function splitBaseUrl(baseUrl: string): { host: string; port: string } {
+  const m = /^(?:http:\/\/)?(.+?)(?::(\d+))?$/i.exec(baseUrl);
+  return { host: m?.[1] ?? baseUrl, port: m?.[2] ?? "" };
+}

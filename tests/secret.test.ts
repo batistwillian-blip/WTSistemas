@@ -29,3 +29,20 @@ describe("endereço do CHServer", () => {
     expect(() => validateChConfig({ baseUrl: "x:8080/outra/coisa", cnpj: "11222333000181", companyKey: "1", token: "abc" })).toThrow("Endereço");
   });
 });
+
+import { buildBaseUrl, splitBaseUrl } from "@/lib/chserver";
+
+describe("servidor e porta separados", () => {
+  it("junta servidor e porta", () => {
+    expect(buildBaseUrl("cloud.exemplo.com.br", "8081")).toBe("http://cloud.exemplo.com.br:8081");
+    expect(buildBaseUrl("http://cloud.exemplo.com.br:8080/", "8081")).toBe("http://cloud.exemplo.com.br:8081");
+    expect(buildBaseUrl("cloud.exemplo.com.br:8081", "")).toBe("http://cloud.exemplo.com.br:8081");
+  });
+  it("exige a porta", () => {
+    expect(() => buildBaseUrl("cloud.exemplo.com.br", "")).toThrow("porta");
+    expect(() => buildBaseUrl("cloud.exemplo.com.br", "99999")).toThrow("Porta");
+  });
+  it("separa para o formulário", () => {
+    expect(splitBaseUrl("http://cloud.exemplo.com.br:8081")).toEqual({ host: "cloud.exemplo.com.br", port: "8081" });
+  });
+});

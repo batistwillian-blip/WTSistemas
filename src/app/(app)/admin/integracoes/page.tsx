@@ -6,7 +6,7 @@ import { PageHead } from "@/components/PageHead";
 import { db } from "@/db";
 import { integrationRuns, integrationSettings } from "@/db/schema";
 import { requireAdmin } from "@/lib/access";
-import { readChConfig } from "@/lib/chserver";
+import { readChConfig, splitBaseUrl } from "@/lib/chserver";
 import { allCompanies, getAccounts } from "@/lib/queries";
 import { ChSettingsForm } from "./ChSettingsForm";
 
@@ -77,7 +77,7 @@ export default async function IntegracoesPage() {
         <ChSettingsForm
           accounts={accounts.map((a) => ({ id: a.id, label: a.name, company: names.get(a.companyId) ?? "" }))}
           initial={{
-            baseUrl: settings?.baseUrl.replace(/^http:\/\//, "") ?? "",
+            ...(settings ? splitBaseUrl(settings.baseUrl) : { host: "", port: "8081" }),
             cnpj: settings?.cnpj ?? "",
             companyKey: settings?.companyKey ?? "",
             hasToken: !!settings,
@@ -91,7 +91,7 @@ export default async function IntegracoesPage() {
         <h2>Onde encontrar cada informação</h2>
         <div className="stack" style={{ gap: 10 }}>
           <p>
-            <b>Endereço:</b> o endereço externo do CHServerWeb com a porta da API (normalmente 8080). Não é a porta 3050, que é a do banco de dados.
+            <b>Servidor e porta:</b> o endereço externo do CHServerWeb e a porta da API (no seu caso, 8081). Não é a porta 3050, que é a do banco de dados.
             Peça ao suporte do CH se não souber.
           </p>
           <p>
