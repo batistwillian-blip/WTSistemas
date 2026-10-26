@@ -118,13 +118,48 @@ export type ChTitle = {
   externalCategory: string | null;
 };
 
-/** Converte um título de Receber ou Pagar no formato de lançamento. Retorna null se faltar dado essencial. */
+/**
+ * Situação do título no CHServer, conferida no banco do ERP (tabela PAGAR):
+ * ATIVO 1 = válido, outro valor = excluído; STATUS 0 = pago, 1 = aberto ou parcial, 2 = cancelado.
+ * Também aceita a situação em texto, caso a API devolva assim.
+ */
+export type ChTitleState = "aberto" | "pago" | "cancelado" | "excluido";
+
+export function titleState(kind: "Receber" | "Pagar", r: Record<string, unknown>): ChTitleState {
+  if (r.ATIVO !== undefined && r.ATIVO !== null && r.ATIVO !== "") {
+    const a = String(r.ATIVO).trim().toUpperCase();
+    if (!["1", "S", "SIM", "TRUE"].includes(a)) return "excluido";
+  }
+  const paidDate = kind === "Receber" ? r.DATABAIXA : r.DATAPAGAMENTO;
+  const st = r.STATUS === undefined || r.STATUS === null ? "" : String(r.STATUS).trim().toUpperCase();
+  if (st === "2" || /CANCEL/.test(st)) return "cancelado";
+  if (/EXCLU/.test(st)) return "excluido";
+  if (st === "0" || /PAG|BAIXAD|QUITAD|LIQUID/.test(st)) return "pago";
+  if (st === "1" || /ABERT|PARCIAL/.test(st)) return "aberto";
+  return parseChDate(paidDate) ? "pago" : "aberto";
+}
+
+/** Converte um título de Receber ou Pagar no formato de lançamento. Retorna null se faltar dado essencial ou se estiver cancelado/excluído. */
 export function mapTitle(kind: "Receber" | "Pagar", r: Record<string, unknown>): ChTitle | null {
   const key = r.CHAVE;
   if (key === undefined || key === null || key === "") return null;
-  const amount = parseChMoney(r.VALOR);
+  const state = titleState(kind, r);
+  if (state === "cancelado" || state === "excluido") return null;
+  const value = parseChMoney(r.VALOR);
   const dueDate = parseChDate(r.VENCIMENTO);
-  if (amount === null || amount <= 0 || !dueDate) return null;
+  if (value === null || value <= 0 || !dueDate) return null;
+  let amount = value;
+  let paidAt: string | null = null;
+  if (state === "pago") {
+    // O que saiu do caixa é o valor pago (com juros ou desconto), quando a API informa.
+    const paid = parseChMoney(r.VLRPAGO);
+    if (paid !== null && paid > 0) amount = paid;
+    paidAt = parseChDate(kind === "Receber" ? r.DATABAIXA : r.DATAPAGAMENTO) ?? parseChDate(r.DATAHORAALT) ?? dueDate;
+  } else {
+    // Parcial: no caixa fica só o que falta pagar.
+    const partial = parseChMoney(r.RECEBPARCIAL);
+    if (partial !== null && partial > 0 && partial < value) amount = value - partial;
+  }
   const doc = r.DOCUMENTO ? String(r.DOCUMENTO) : "";
   const parcel = r.PARCELA && r.TOTPARC ? ` ${r.PARCELA}/${r.TOTPARC}` : "";
   const fallback = `${kind === "Receber" ? "Recebimento" : "Pagamento"} ${doc}${parcel}`.trim();
@@ -136,7 +171,7 @@ export function mapTitle(kind: "Receber" | "Pagar", r: Record<string, unknown>):
     counterpart: r.CHAVECLIFOR != null && r.CHAVECLIFOR !== "" ? `Cliente/fornecedor CH ${String(r.CHAVECLIFOR)}` : null,
     amount,
     dueDate,
-    paidAt: parseChDate(kind === "Receber" ? r.DATABAIXA : r.DATAPAGAMENTO),
+    paidAt,
     externalCategory: typeof r.DESCRPLANOCTA === "string" ? r.DESCRPLANOCTA.slice(0, 100) : null,
   };
 }

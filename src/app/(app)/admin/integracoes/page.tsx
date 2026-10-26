@@ -1,7 +1,7 @@
-import { and, desc, eq, isNull, like, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, like, lte, sql } from "drizzle-orm";
 import { clearImportedReceivables, runChServerSync } from "@/app/actions/integracoes";
 import { ConfirmButton } from "@/components/FormStatus";
-import { formatMoney } from "@/lib/format";
+import { addMonths, formatDate, formatMoney, isValidIsoDate, monthEnd, monthStart, today } from "@/lib/format";
 import { ActionForm } from "@/components/ActionForm";
 import { Submit } from "@/components/FormStatus";
 import { PageHead } from "@/components/PageHead";
@@ -19,9 +19,16 @@ function fmt(d: Date) {
 
 export default async function IntegracoesPage({ searchParams }: { searchParams: SearchParams }) {
   await requireAdmin();
-  const removed = Number(param(await searchParams, "removidos"));
+  const sp = await searchParams;
+  const removed = Number(param(sp, "removidos"));
+  // Conferência com o relatório "Contas a pagar" do CH (abertos/parciais por vencimento).
+  const d0 = today();
+  const fromParam = param(sp, "de") ?? "";
+  const toParam = param(sp, "ate") ?? "";
+  const checkFrom = isValidIsoDate(fromParam) ? fromParam : monthStart(d0);
+  const checkTo = isValidIsoDate(toParam) ? toParam : monthEnd(addMonths(d0, 24));
   const companies = await allCompanies();
-  const [[settings], runs, accounts, [importedReceivables]] = await Promise.all([
+  const [[settings], runs, accounts, [importedReceivables], openPayables] = await Promise.all([
     db.select().from(integrationSettings).where(eq(integrationSettings.source, "chserver")),
     db.select().from(integrationRuns).where(eq(integrationRuns.source, "chserver")).orderBy(desc(integrationRuns.startedAt)).limit(15),
     getAccounts(companies.map((c) => c.id), true),
@@ -29,7 +36,22 @@ export default async function IntegracoesPage({ searchParams }: { searchParams: 
       .select({ n: sql<number>`count(*)::int`, total: sql<number>`coalesce(sum(${transactions.amount}), 0)::bigint` })
       .from(transactions)
       .where(and(eq(transactions.source, "chserver"), like(transactions.externalId, "receber:%"), isNull(transactions.deletedAt))),
+    db
+      .select({ id: transactions.id, description: transactions.description, amount: transactions.amount, dueDate: transactions.dueDate })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.source, "chserver"),
+          like(transactions.externalId, "pagar:%"),
+          isNull(transactions.deletedAt),
+          isNull(transactions.paidAt),
+          gte(transactions.dueDate, checkFrom),
+          lte(transactions.dueDate, checkTo),
+        ),
+      )
+      .orderBy(asc(transactions.dueDate), asc(transactions.id)),
   ]);
+  const openTotal = openPayables.reduce((s, t) => s + t.amount, 0);
   let envConfigured = false;
   try {
     envConfigured = !settings && readChConfig() !== null;
@@ -73,6 +95,58 @@ export default async function IntegracoesPage({ searchParams }: { searchParams: 
               <Submit className="btn">Importar agora</Submit>
             </div>
           </ActionForm>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Conferir com o relatório do CHServer</h2>
+        <p className="help" style={{ marginBottom: 12 }}>
+          No CH, tire o relatório Contas a pagar com status “Abertos/parciais”, filtrado por vencimento, no mesmo período. O total geral precisa bater com o
+          total abaixo.
+        </p>
+        <form className="form" method="get" style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end", marginBottom: 12 }}>
+          <label>
+            Vencimento de
+            <input type="date" name="de" defaultValue={checkFrom} />
+          </label>
+          <label>
+            até
+            <input type="date" name="ate" defaultValue={checkTo} />
+          </label>
+          <div>
+            <button className="btn" type="submit">
+              Conferir
+            </button>
+          </div>
+        </form>
+        <p>
+          Em aberto no caixa, vindo do CHServer, de {formatDate(checkFrom)} a {formatDate(checkTo)}: <b>{openPayables.length} títulos</b>, total{" "}
+          <b>{formatMoney(openTotal)}</b>.
+        </p>
+        {openPayables.length > 0 && (
+          <details style={{ marginTop: 10 }}>
+            <summary>Ver os {openPayables.length} títulos</summary>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Vencimento</th>
+                    <th>Descrição</th>
+                    <th className="num">Valor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {openPayables.map((t) => (
+                    <tr key={t.id}>
+                      <td className="small">{formatDate(t.dueDate)}</td>
+                      <td className="small">{t.description}</td>
+                      <td className="num">{formatMoney(t.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
         )}
       </div>
 
@@ -137,7 +211,8 @@ export default async function IntegracoesPage({ searchParams }: { searchParams: 
             mostrado para alguém, gere um novo no CHServer e cole aqui.
           </p>
           <p className="help">
-            O que é importado: contas a pagar com vencimento entre 1 ano atrás e 6 meses à frente (título com data de pagamento entra como pago) e as
+            O que é importado: contas a pagar com vencimento entre 2 anos atrás e 5 anos à frente, seguindo a situação do CH (pago entra como pago,
+            cancelado ou excluído não entra) e as
             vendas (notas de saída) dos últimos 90 dias. O total vendido em cada dia entra no caixa como uma entrada “Vendas do dia”; notas canceladas e
             devoluções são descontadas. A cada importação, o que foi corrigido no CHServer é atualizado aqui, e o que foi excluído lá sai do caixa. O
             contas a receber do CH nunca é importado. Os lançamentos importados aparecem com a etiqueta “Automático” e não podem ser editados aqui; a correção é feita no CHServer.

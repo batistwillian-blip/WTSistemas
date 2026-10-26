@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { chGet, extractRecords, mapTitle, parseChDate, parseChMoney, readChConfig, toChDate } from "@/lib/chserver";
+import { chGet, extractRecords, mapTitle, titleState, parseChDate, parseChMoney, readChConfig, toChDate } from "@/lib/chserver";
 
 const env = {
   CHSERVER_URL: "http://servidor.exemplo:8080/",
@@ -72,6 +72,18 @@ describe("mapTitle", () => {
     expect(t?.type).toBe("saida");
     expect(t?.paidAt).toBeNull();
     expect(t?.description).toBe("Fornecedor X");
+  });
+  it("segue a situação do CHServer: excluído, cancelado, pago e parcial", () => {
+    const base = { CHAVE: 9, VENCIMENTO: "05.11.2026", VALOR: 100, DATAPAGAMENTO: null };
+    expect(titleState("Pagar", { ...base, ATIVO: 2, STATUS: 1 })).toBe("excluido");
+    expect(mapTitle("Pagar", { ...base, ATIVO: 2, STATUS: 1 })).toBeNull();
+    expect(mapTitle("Pagar", { ...base, ATIVO: 1, STATUS: 2 })).toBeNull();
+    expect(mapTitle("Pagar", { ...base, STATUS: "CANCELADO" })).toBeNull();
+    const pago = mapTitle("Pagar", { ...base, STATUS: 0, VLRPAGO: 103.5, DATAHORAALT: "2026-11-06T10:00:00" })!;
+    expect(pago.paidAt).toBe("2026-11-06");
+    expect(pago.amount).toBe(10350);
+    expect(mapTitle("Pagar", { ...base, ATIVO: 1, STATUS: 1, RECEBPARCIAL: 40 })!.amount).toBe(6000);
+    expect(mapTitle("Pagar", { ...base, STATUS: 1, DATAPAGAMENTO: "01.11.2026" })!.paidAt).toBeNull();
   });
   it("ignora título sem chave ou valor", () => {
     expect(mapTitle("Pagar", { VENCIMENTO: "01.12.2026", VALOR: 1 })).toBeNull();

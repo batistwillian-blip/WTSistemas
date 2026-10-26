@@ -3,7 +3,7 @@
 import { and, eq, gte, inArray, isNull, like, lte, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { accounts, auditLog, companies, integrationRuns, integrationSettings, sales, transactions } from "@/db/schema";
-import { chGet, mapSale, mapTitle, readChConfig, toChDate, type ChConfig, type ChSale, type ChTitle } from "./chserver";
+import { chGet, mapSale, mapTitle, readChConfig, titleState, toChDate, type ChConfig, type ChSale, type ChTitle } from "./chserver";
 import { addDays, formatMoney, today } from "./format";
 import { decryptSecret } from "./secret-box";
 
@@ -18,9 +18,9 @@ export type ChSettings = {
   sales: boolean;
 };
 
-// Janela de vencimentos lida a cada importação. Títulos antigos em aberto também são atualizados.
-const PAST_DAYS = 365;
-const FUTURE_DAYS = 180;
+// Janela de vencimentos lida a cada importação: 2 anos para trás (pega abertos antigos) e 5 para frente (parcelamentos longos).
+const PAST_DAYS = 730;
+const FUTURE_DAYS = 1826;
 
 /** Configuração salva na tela tem prioridade; sem ela, usa as variáveis CHSERVER_* do servidor. */
 export async function loadChSettings(): Promise<ChSettings | null> {
@@ -87,9 +87,21 @@ async function runSync(triggeredBy: { id: number; name: string } | null): Promis
     const fromIso = addDays(today(), -PAST_DAYS);
     const toIso = addDays(today(), FUTURE_DAYS);
     const titles: ChTitle[] = [];
+    // Cancelados e excluídos no CH: saem do caixa mesmo que sejam muitos (a proteção contra resposta cortada não vale para eles).
+    const discarded = new Set<string>();
+    const states: Record<string, number> = {};
+    const fields = new Set<string>();
     for (const kind of kinds) {
       const records = await chGet(cfg, kind, [toChDate(fromIso), toChDate(toIso)]);
       for (const r of records) {
+        Object.keys(r).forEach((k) => fields.add(k));
+        const state = titleState(kind, r);
+        const raw = `STATUS=${r.STATUS ?? "-"} ATIVO=${r.ATIVO ?? "-"}`;
+        states[raw] = (states[raw] ?? 0) + 1;
+        if ((state === "cancelado" || state === "excluido") && r.CHAVE != null && r.CHAVE !== "") {
+          discarded.add(`${kind.toLowerCase()}:${String(r.CHAVE)}`);
+          continue;
+        }
         const t = mapTitle(kind, r);
         if (t) titles.push(t);
       }
@@ -139,23 +151,28 @@ async function runSync(triggeredBy: { id: number; name: string } | null): Promis
           lte(transactions.dueDate, toIso),
         ),
       );
-    const gone = existing.filter((e) => e.externalId && prefixes.some((p) => e.externalId!.startsWith(p)) && !seen.has(e.externalId));
-    // Proteção: se a resposta veio vazia ou cortada, não apaga em massa; só avisa.
+    const ours = existing.filter((e) => e.externalId && prefixes.some((p) => e.externalId!.startsWith(p)) && !seen.has(e.externalId));
+    const canceled = ours.filter((e) => discarded.has(e.externalId!));
+    const gone = ours.filter((e) => !discarded.has(e.externalId!));
+    // Proteção: se a resposta veio vazia ou cortada, não apaga em massa o que só "sumiu"; só avisa.
     const suspicious = gone.length > 20 && gone.length > existing.length / 2;
-    if (gone.length && !suspicious) {
+    const toRemove = suspicious ? canceled : ours;
+    if (toRemove.length) {
       await db
         .update(transactions)
         .set({ deletedAt: new Date() })
-        .where(inArray(transactions.id, gone.map((g) => g.id)));
+        .where(inArray(transactions.id, toRemove.map((g) => g.id)));
     }
-    const removed = suspicious ? 0 : gone.length;
-    const warning = suspicious ? ` Atenção: ${gone.length} títulos não vieram nesta leitura; por segurança nada foi removido.` : "";
+    const removed = toRemove.length;
+    const warning = suspicious ? ` Atenção: ${gone.length} títulos não vieram nesta leitura; por segurança eles não foram removidos.` : "";
+    const open = titles.filter((t) => !t.paidAt);
+    const openTotal = open.reduce((sum, t) => sum + t.amount, 0);
 
     const salesInfo = settings.sales ? await syncSales(cfg, companyId, accountId) : null;
     const parts: string[] = [];
     if (kinds.length)
       parts.push(
-        `Contas a pagar: ${titles.length} lidas, ${created} novas, ${updated} atualizadas${removed ? `, ${removed} removidas por não existirem mais no CHServer` : ""}.${warning}`,
+        `Contas a pagar: ${open.length} em aberto (${formatMoney(openTotal)}) e ${titles.length - open.length} pagas; ${created} novas, ${updated} atualizadas${removed ? `, ${removed} removidas por estarem canceladas, excluídas ou não existirem mais no CHServer` : ""}${discarded.size ? `; ${discarded.size} canceladas ou excluídas no CH foram ignoradas` : ""}.${warning}`,
       );
     if (salesInfo) parts.push(salesInfo.message);
     const message = parts.join(" ");
@@ -165,7 +182,20 @@ async function runSync(triggeredBy: { id: number; name: string } | null): Promis
       companyId,
       action: "sincronizar",
       entity: "integracao_chserver",
-      after: { created, updated, removidos: removed, lidos: titles.length, tipos: kinds, vendas: salesInfo?.count ?? null },
+      after: {
+        created,
+        updated,
+        removidos: removed,
+        lidos: titles.length,
+        ignorados: discarded.size,
+        abertos: open.length,
+        totalAberto: openTotal,
+        situacoes: states,
+        campos: [...fields].sort(),
+        janela: [fromIso, toIso],
+        tipos: kinds,
+        vendas: salesInfo?.count ?? null,
+      },
     });
     return finish({ ok: true, message, created, updated });
   } catch (e) {
