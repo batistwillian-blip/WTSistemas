@@ -8,7 +8,8 @@ import { accounts, integrationSettings, transactions } from "@/db/schema";
 import { requireAdmin } from "@/lib/access";
 import { logChange } from "@/lib/audit";
 import { buildBaseUrl, validateChConfig } from "@/lib/chserver";
-import { loadChSettings, syncChServer, testChConnection } from "@/lib/chserver-sync";
+import { importedOutsideBalance, loadChSettings, syncChServer, testChConnection } from "@/lib/chserver-sync";
+import { isValidIsoDate } from "@/lib/format";
 import { guard, int, str, UserError, type ActionState } from "@/lib/form";
 import { decryptSecret, encryptSecret } from "@/lib/secret-box";
 
@@ -45,6 +46,12 @@ export async function saveChSettings(_prev: ActionState, fd: FormData): Promise<
     const importPayables = fd.get("importPayables") === "on";
     const importSales = fd.get("importSales") === "on";
     if (!importPayables && !importSales) throw new UserError("Marque o que importar: contas a pagar e/ou vendas.");
+    // Saldo: por padrão nada do CH entra; o saldo inicial é lançado à mão.
+    const paidAffectBalance = fd.get("paidAffectBalance") === "on";
+    const salesAffectBalance = fd.get("salesAffectBalance") === "on";
+    const from = str(fd, "balanceFrom", 10);
+    if (from && !isValidIsoDate(from)) throw new UserError("Data do saldo inválida.");
+    const balanceFrom = from || null;
     const values = {
       baseUrl: cfg.baseUrl,
       cnpj: cfg.cnpj,
@@ -56,6 +63,9 @@ export async function saveChSettings(_prev: ActionState, fd: FormData): Promise<
       importReceivables,
       importPayables,
       importSales,
+      paidAffectBalance,
+      salesAffectBalance,
+      balanceFrom,
       updatedAt: new Date(),
       updatedBy: admin.id,
     };
@@ -66,7 +76,7 @@ export async function saveChSettings(_prev: ActionState, fd: FormData): Promise<
     // O token nunca vai para o log: registramos apenas se ele foi trocado.
     const visible = (v: typeof values | typeof current) =>
       v && { endereco: v.baseUrl, cnpj: v.cnpj, chave: v.companyKey, empresa: v.companyId, conta: v.accountId, ativa: v.enabled,
-        pagar: v.importPayables, vendas: v.importSales };
+        pagar: v.importPayables, vendas: v.importSales, pagasNoSaldo: v.paidAffectBalance, vendasNoSaldo: v.salesAffectBalance, saldoDesde: v.balanceFrom };
     await logChange({
       user: admin,
       companyId: account.companyId,
@@ -120,5 +130,34 @@ export async function clearImportedReceivables(_prev: ActionState): Promise<Acti
     revalidatePath("/", "layout");
     // O cartão some quando não há mais títulos; o aviso vai pela URL para continuar visível.
     redirect(`/admin/integracoes?removidos=${rows.length}`);
+  });
+}
+
+/** Tira do saldo os pagamentos e vendas do dia importados do CH que estão fora das opções de saldo. Lançamentos manuais nunca são tocados. */
+export async function clearImportedBalance(_prev: ActionState): Promise<ActionState> {
+  return guard(async () => {
+    const admin = await requireAdmin();
+    const [settings] = await db.select().from(integrationSettings).where(eq(integrationSettings.source, "chserver"));
+    if (!settings) throw new UserError("Integração não configurada.");
+    const rules = { paid: settings.paidAffectBalance, sales: settings.salesAffectBalance, from: settings.balanceFrom };
+    const rows = await db
+      .update(transactions)
+      .set({ deletedAt: new Date() })
+      .where(importedOutsideBalance(rules))
+      .returning({ id: transactions.id, amount: transactions.amount, type: transactions.type });
+    await logChange({
+      user: admin,
+      companyId: settings.companyId,
+      action: "zerar_saldo_importado",
+      entity: "integracao_chserver",
+      after: {
+        removidos: rows.length,
+        saidas: rows.filter((r) => r.type === "saida").reduce((s, r) => s + r.amount, 0),
+        entradas: rows.filter((r) => r.type === "entrada").reduce((s, r) => s + r.amount, 0),
+        regras: rules,
+      },
+    });
+    revalidatePath("/", "layout");
+    redirect(`/admin/integracoes?zerados=${rows.length}`);
   });
 }

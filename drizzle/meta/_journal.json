@@ -36,6 +36,13 @@
       "when": 1793048799011,
       "tag": "0004_vendas",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793057778715,
+      "tag": "0005_saldo_manual",
+      "breakpoints": true
     }
   ]
 }

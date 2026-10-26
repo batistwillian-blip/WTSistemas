@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, isNull, like, lte, sql } from "drizzle-orm";
-import { clearImportedReceivables, runChServerSync } from "@/app/actions/integracoes";
+import { clearImportedBalance, clearImportedReceivables, runChServerSync } from "@/app/actions/integracoes";
+import { importedOutsideBalance } from "@/lib/chserver-sync";
 import { ConfirmButton } from "@/components/FormStatus";
 import { addMonths, formatDate, formatMoney, isValidIsoDate, monthEnd, monthStart, today } from "@/lib/format";
 import { ActionForm } from "@/components/ActionForm";
@@ -21,6 +22,7 @@ export default async function IntegracoesPage({ searchParams }: { searchParams: 
   await requireAdmin();
   const sp = await searchParams;
   const removed = Number(param(sp, "removidos"));
+  const zeroed = param(sp, "zerados");
   // Conferência com o relatório "Contas a pagar" do CH (abertos/parciais por vencimento).
   const d0 = today();
   const fromParam = param(sp, "de") ?? "";
@@ -28,8 +30,8 @@ export default async function IntegracoesPage({ searchParams }: { searchParams: 
   const checkFrom = isValidIsoDate(fromParam) ? fromParam : monthStart(d0);
   const checkTo = isValidIsoDate(toParam) ? toParam : monthEnd(addMonths(d0, 24));
   const companies = await allCompanies();
-  const [[settings], runs, accounts, [importedReceivables], openPayables] = await Promise.all([
-    db.select().from(integrationSettings).where(eq(integrationSettings.source, "chserver")),
+  const [settings] = await db.select().from(integrationSettings).where(eq(integrationSettings.source, "chserver"));
+  const [runs, accounts, [importedReceivables], openPayables, [outsideBalance]] = await Promise.all([
     db.select().from(integrationRuns).where(eq(integrationRuns.source, "chserver")).orderBy(desc(integrationRuns.startedAt)).limit(15),
     getAccounts(companies.map((c) => c.id), true),
     db
@@ -50,6 +52,20 @@ export default async function IntegracoesPage({ searchParams }: { searchParams: 
         ),
       )
       .orderBy(asc(transactions.dueDate), asc(transactions.id)),
+    db
+      .select({
+        n: sql<number>`count(*)::int`,
+        out: sql<number>`coalesce(sum(${transactions.amount}) filter (where ${transactions.type} = 'saida'), 0)::bigint`,
+        in: sql<number>`coalesce(sum(${transactions.amount}) filter (where ${transactions.type} = 'entrada'), 0)::bigint`,
+      })
+      .from(transactions)
+      .where(
+        importedOutsideBalance({
+          paid: settings?.paidAffectBalance ?? false,
+          sales: settings?.salesAffectBalance ?? false,
+          from: settings?.balanceFrom ?? null,
+        }),
+      ),
   ]);
   const openTotal = openPayables.reduce((s, t) => s + t.amount, 0);
   let envConfigured = false;
@@ -74,6 +90,9 @@ export default async function IntegracoesPage({ searchParams }: { searchParams: 
       />
 
       {removed > 0 && <div className="alert ok">{removed} títulos a receber importados foram removidos do caixa.</div>}
+      {zeroed !== undefined && (
+        <div className="alert ok">Saldo importado zerado: {zeroed} lançamentos do CH saíram do saldo. Agora lance o saldo inicial na conta.</div>
+      )}
       <div className="card">
         <div className="panel-h">
           <h2>Situação</h2>
@@ -168,9 +187,33 @@ export default async function IntegracoesPage({ searchParams }: { searchParams: 
             enabled: settings?.enabled ?? true,
             importPayables: settings?.importPayables ?? true,
             importSales: settings?.importSales ?? true,
+            paidAffectBalance: settings?.paidAffectBalance ?? false,
+            salesAffectBalance: settings?.salesAffectBalance ?? false,
+            balanceFrom: settings?.balanceFrom ?? "",
           }}
         />
       </div>
+
+      {outsideBalance.n > 0 && (
+        <div className="card">
+          <h2>Saldo vindo do CHServer</h2>
+          <p style={{ marginBottom: 12 }}>
+            Há <b>{outsideBalance.n}</b> lançamentos importados do CH mexendo no saldo fora das opções acima: pagamentos de{" "}
+            <b>{formatMoney(Number(outsideBalance.out))}</b> e vendas de <b>{formatMoney(Number(outsideBalance.in))}</b>. Zere para o saldo ficar só com o
+            que você lança. As contas a pagar em aberto e a tela de vendas não são afetadas, nem os lançamentos manuais, e tudo fica registrado no log.
+          </p>
+          <ActionForm action={clearImportedBalance} className="form">
+            <div>
+              <ConfirmButton
+                className="btn danger"
+                message={`Tirar do saldo ${outsideBalance.n} lançamentos importados do CH (pagamentos ${formatMoney(Number(outsideBalance.out))}, vendas ${formatMoney(Number(outsideBalance.in))})? Lançamentos manuais e contas em aberto não são afetados.`}
+              >
+                Zerar o saldo importado ({outsideBalance.n} lançamentos)
+              </ConfirmButton>
+            </div>
+          </ActionForm>
+        </div>
+      )}
 
       {importedReceivables.n > 0 && (
         <div className="card">
@@ -211,10 +254,10 @@ export default async function IntegracoesPage({ searchParams }: { searchParams: 
             mostrado para alguém, gere um novo no CHServer e cole aqui.
           </p>
           <p className="help">
-            O que é importado: contas a pagar com vencimento entre 2 anos atrás e 5 anos à frente, seguindo a situação do CH (pago entra como pago,
-            cancelado ou excluído não entra) e as
-            vendas (notas de saída) dos últimos 90 dias. O total vendido em cada dia entra no caixa como uma entrada “Vendas do dia”; notas canceladas e
-            devoluções são descontadas. A cada importação, o que foi corrigido no CHServer é atualizado aqui, e o que foi excluído lá sai do caixa. O
+            O que é importado: contas a pagar com vencimento entre 2 anos atrás e 5 anos à frente, seguindo a situação do CH (cancelado ou excluído
+            não entra; pago só entra se “Contas pagas no CH entram no saldo” estiver marcado) e as
+            vendas (notas de saída) dos últimos 90 dias. Com “Vendas do dia entram no saldo” marcado, o total vendido em cada dia entra no caixa como “Vendas do dia”;
+            notas canceladas e devoluções são descontadas. Nada disso vem marcado: o saldo é o que você lança. A cada importação, o que foi corrigido no CHServer é atualizado aqui, e o que foi excluído lá sai do caixa. O
             contas a receber do CH nunca é importado. Os lançamentos importados aparecem com a etiqueta “Automático” e não podem ser editados aqui; a correção é feita no CHServer.
           </p>
         </div>

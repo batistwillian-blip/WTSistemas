@@ -15,6 +15,9 @@ export type ChFormInitial = {
   enabled: boolean;
   importPayables: boolean;
   importSales: boolean;
+  paidAffectBalance: boolean;
+  salesAffectBalance: boolean;
+  balanceFrom: string;
 };
 
 export function ChSettingsForm({ initial, accounts }: { initial: ChFormInitial; accounts: Account[] }) {
@@ -93,6 +96,27 @@ export function ChSettingsForm({ initial, accounts }: { initial: ChFormInitial; 
           <input type="checkbox" name="importSales" defaultChecked={initial.importSales} /> Importar vendas (notas de saída)
         </label>
       </div>
+      <fieldset className="stack" style={{ gap: 8, border: "1px solid var(--line)", borderRadius: 8, padding: "10px 14px" }}>
+        <legend className="small" style={{ padding: "0 6px" }}>
+          Saldo
+        </legend>
+        <p className="help">
+          O saldo é lançado à mão (saldo inicial na conta). Deixe desmarcado para o CH não mexer nele: as contas a pagar em aberto e a tela de vendas
+          continuam funcionando.
+        </p>
+        <div className="filters">
+          <label className="check">
+            <input type="checkbox" name="paidAffectBalance" defaultChecked={initial.paidAffectBalance} /> Contas pagas no CH entram no saldo
+          </label>
+          <label className="check">
+            <input type="checkbox" name="salesAffectBalance" defaultChecked={initial.salesAffectBalance} /> Vendas do dia entram no saldo
+          </label>
+          <label>
+            A partir de
+            <input type="date" name="balanceFrom" defaultValue={initial.balanceFrom} />
+          </label>
+        </div>
+      </fieldset>
       <div className="filters">
         <button className="btn primary" type="submit" value="save" disabled={saving}>
           {saving ? "Salvando…" : "Salvar configuração"}

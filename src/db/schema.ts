@@ -212,6 +212,10 @@ export const integrationSettings = pgTable("config_integracao", {
   importReceivables: boolean("importar_receber").notNull().default(true),
   importPayables: boolean("importar_pagar").notNull().default(true),
   importSales: boolean("importar_vendas").notNull().default(true),
+  // O saldo é lançado à mão (saldo inicial). Pagamentos e vendas do CH só mexem no saldo se marcados, e a partir de balanceFrom.
+  paidAffectBalance: boolean("pagas_no_saldo").notNull().default(false),
+  salesAffectBalance: boolean("vendas_no_saldo").notNull().default(false),
+  balanceFrom: date("saldo_desde"),
   updatedAt: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   updatedBy: integer("atualizado_por").references(() => users.id),
 });
