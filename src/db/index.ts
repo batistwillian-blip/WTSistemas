@@ -4,10 +4,9 @@ import * as schema from "./schema";
 
 const globalForDb = globalThis as unknown as { pool?: Pool };
 
+// O pool só conecta na primeira consulta, então o build funciona mesmo sem DATABASE_URL.
 function createPool() {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL não configurada");
-  return new Pool({ connectionString: url, max: 10 });
+  return new Pool({ connectionString: process.env.DATABASE_URL, max: 10 });
 }
 
 // Reaproveita o pool entre recarregamentos no modo de desenvolvimento.

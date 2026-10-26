@@ -1,6 +1,6 @@
 // Sincronização dos títulos de Receber e Pagar do CHServer para os lançamentos da empresa configurada.
 // Usado pela importação automática, pelo botão do administrador, pela rota agendada e pelo script.
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { accounts, auditLog, companies, integrationRuns, integrationSettings, transactions } from "@/db/schema";
 import { chGet, mapTitle, readChConfig, toChDate, type ChConfig, type ChTitle } from "./chserver";
@@ -8,7 +8,17 @@ import { addDays, today } from "./format";
 import { decryptSecret } from "./secret-box";
 
 export type SyncResult = { ok: boolean; message: string; created: number; updated: number };
-export type ChSettings = { cfg: ChConfig; companyId: number; accountId: number; origin: "tela" | "variaveis" };
+export type ChSettings = {
+  cfg: ChConfig;
+  companyId: number;
+  accountId: number;
+  origin: "tela" | "variaveis";
+  kinds: ("Receber" | "Pagar")[];
+};
+
+// Janela de vencimentos lida a cada importação. Títulos antigos em aberto também são atualizados.
+const PAST_DAYS = 365;
+const FUTURE_DAYS = 180;
 
 /** Configuração salva na tela tem prioridade; sem ela, usa as variáveis CHSERVER_* do servidor. */
 export async function loadChSettings(): Promise<ChSettings | null> {
@@ -20,6 +30,7 @@ export async function loadChSettings(): Promise<ChSettings | null> {
       companyId: row.companyId,
       accountId: row.accountId,
       origin: "tela",
+      kinds: [...(row.importReceivables ? (["Receber"] as const) : []), ...(row.importPayables ? (["Pagar"] as const) : [])],
     };
   }
   const cfg = readChConfig();
@@ -33,7 +44,7 @@ export async function loadChSettings(): Promise<ChSettings | null> {
     .from(accounts)
     .where(and(eq(accounts.companyId, company.id), eq(accounts.name, accountName)));
   if (!account) throw new Error(`Conta "${accountName}" não encontrada em ${company.name}.`);
-  return { cfg, companyId: company.id, accountId: account.id, origin: "variaveis" };
+  return { cfg, companyId: company.id, accountId: account.id, origin: "variaveis", kinds: ["Receber", "Pagar"] };
 }
 
 /** Testa a conexão lendo o cadastro da empresa no CHServer (somente leitura). */
@@ -67,13 +78,14 @@ async function runSync(triggeredBy: { id: number; name: string } | null): Promis
   try {
     const settings = await loadChSettings();
     if (!settings) return finish({ ok: false, message: "Integração não configurada.", created: 0, updated: 0 });
-    const { cfg, companyId, accountId } = settings;
+    const { cfg, companyId, accountId, kinds } = settings;
+    if (kinds.length === 0) return finish({ ok: false, message: "Nenhum tipo de título marcado para importar.", created: 0, updated: 0 });
 
-    const from = toChDate(addDays(today(), -60));
-    const to = toChDate(addDays(today(), 120));
+    const fromIso = addDays(today(), -PAST_DAYS);
+    const toIso = addDays(today(), FUTURE_DAYS);
     const titles: ChTitle[] = [];
-    for (const kind of ["Receber", "Pagar"] as const) {
-      const records = await chGet(cfg, kind, [from, to]);
+    for (const kind of kinds) {
+      const records = await chGet(cfg, kind, [toChDate(fromIso), toChDate(toIso)]);
       for (const r of records) {
         const t = mapTitle(kind, r);
         if (t) titles.push(t);
@@ -96,11 +108,12 @@ async function runSync(triggeredBy: { id: number; name: string } | null): Promis
             dueDate: t.dueDate,
             paidAt: t.paidAt,
             externalCategory: t.externalCategory,
+            deletedAt: null,
             updatedAt: new Date(),
           },
-          // Só regrava se algo mudou, para o contador refletir alterações reais.
-          setWhere: sql`(${transactions.amount}, ${transactions.dueDate}, ${transactions.paidAt}, ${transactions.description})
-            is distinct from (excluded.valor, excluded.vencimento, excluded.pago_em, excluded.descricao)`,
+          // Só regrava se algo mudou (inclusive título que tinha sumido e voltou), para o contador refletir alterações reais.
+          setWhere: sql`(${transactions.amount}, ${transactions.dueDate}, ${transactions.paidAt}, ${transactions.description}, ${transactions.deletedAt} is null)
+            is distinct from (excluded.valor, excluded.vencimento, excluded.pago_em, excluded.descricao, true)`,
         })
         .returning({ inserted: sql<boolean>`(xmax = 0)` });
       if (!row) continue;
@@ -108,14 +121,41 @@ async function runSync(triggeredBy: { id: number; name: string } | null): Promis
       else updated++;
     }
 
-    const message = `${titles.length} títulos lidos: ${created} novos, ${updated} atualizados.`;
+    // Títulos importados antes que não vieram mais do CHServer (excluídos ou cancelados lá) saem do caixa.
+    // Só olha a mesma janela de vencimentos e os tipos importados, e nunca mexe em lançamentos manuais.
+    const seen = new Set(titles.map((t) => t.externalId));
+    const prefixes = kinds.map((k) => k.toLowerCase() + ":");
+    const existing = await db
+      .select({ id: transactions.id, externalId: transactions.externalId })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.source, "chserver"),
+          isNull(transactions.deletedAt),
+          gte(transactions.dueDate, fromIso),
+          lte(transactions.dueDate, toIso),
+        ),
+      );
+    const gone = existing.filter((e) => e.externalId && prefixes.some((p) => e.externalId!.startsWith(p)) && !seen.has(e.externalId));
+    // Proteção: se a resposta veio vazia ou cortada, não apaga em massa; só avisa.
+    const suspicious = gone.length > 20 && gone.length > existing.length / 2;
+    if (gone.length && !suspicious) {
+      await db
+        .update(transactions)
+        .set({ deletedAt: new Date() })
+        .where(inArray(transactions.id, gone.map((g) => g.id)));
+    }
+    const removed = suspicious ? 0 : gone.length;
+    const warning = suspicious ? ` Atenção: ${gone.length} títulos não vieram nesta leitura; por segurança nada foi removido.` : "";
+
+    const message = `${titles.length} títulos lidos (${kinds.join(" e ")}): ${created} novos, ${updated} atualizados${removed ? `, ${removed} removidos por não existirem mais no CHServer` : ""}.${warning}`;
     await db.insert(auditLog).values({
       userId: triggeredBy?.id ?? null,
       userName: triggeredBy?.name ?? "Importação automática",
       companyId,
       action: "sincronizar",
       entity: "integracao_chserver",
-      after: { created, updated, lidos: titles.length },
+      after: { created, updated, removidos: removed, lidos: titles.length, tipos: kinds },
     });
     return finish({ ok: true, message, created, updated });
   } catch (e) {

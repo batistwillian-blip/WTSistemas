@@ -209,6 +209,8 @@ export const integrationSettings = pgTable("config_integracao", {
     .notNull()
     .references(() => accounts.id),
   enabled: boolean("ativa").notNull().default(true),
+  importReceivables: boolean("importar_receber").notNull().default(true),
+  importPayables: boolean("importar_pagar").notNull().default(true),
   updatedAt: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   updatedBy: integer("atualizado_por").references(() => users.id),
 });

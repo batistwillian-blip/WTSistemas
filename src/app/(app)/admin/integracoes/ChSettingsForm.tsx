@@ -13,6 +13,8 @@ export type ChFormInitial = {
   hasToken: boolean;
   accountId: number | null;
   enabled: boolean;
+  importReceivables: boolean;
+  importPayables: boolean;
 };
 
 export function ChSettingsForm({ initial, accounts }: { initial: ChFormInitial; accounts: Account[] }) {
@@ -81,6 +83,14 @@ export function ChSettingsForm({ initial, accounts }: { initial: ChFormInitial; 
             <option value="on">Ativa (a cada 15 minutos)</option>
             <option value="off">Pausada</option>
           </select>
+        </label>
+      </div>
+      <div className="filters">
+        <label className="check">
+          <input type="checkbox" name="importPayables" defaultChecked={initial.importPayables} /> Importar contas a pagar
+        </label>
+        <label className="check">
+          <input type="checkbox" name="importReceivables" defaultChecked={initial.importReceivables} /> Importar contas a receber
         </label>
       </div>
       <div className="filters">

@@ -1,9 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { redirect } from "next/navigation";
+import { and, eq, isNull, like } from "drizzle-orm";
 import { db } from "@/db";
-import { accounts, integrationSettings } from "@/db/schema";
+import { accounts, integrationSettings, transactions } from "@/db/schema";
 import { requireAdmin } from "@/lib/access";
 import { logChange } from "@/lib/audit";
 import { buildBaseUrl, validateChConfig } from "@/lib/chserver";
@@ -39,6 +40,9 @@ export async function saveChSettings(_prev: ActionState, fd: FormData): Promise<
     const admin = await requireAdmin();
     const { cfg, account, current, tokenChanged } = await readForm(fd);
     const enabled = fd.get("enabled") !== "off";
+    const importReceivables = fd.get("importReceivables") === "on";
+    const importPayables = fd.get("importPayables") === "on";
+    if (!importReceivables && !importPayables) throw new UserError("Marque pelo menos um tipo de título para importar.");
     const values = {
       baseUrl: cfg.baseUrl,
       cnpj: cfg.cnpj,
@@ -47,6 +51,8 @@ export async function saveChSettings(_prev: ActionState, fd: FormData): Promise<
       companyId: account.companyId,
       accountId: account.id,
       enabled,
+      importReceivables,
+      importPayables,
       updatedAt: new Date(),
       updatedBy: admin.id,
     };
@@ -56,7 +62,8 @@ export async function saveChSettings(_prev: ActionState, fd: FormData): Promise<
       .onConflictDoUpdate({ target: integrationSettings.source, set: values });
     // O token nunca vai para o log: registramos apenas se ele foi trocado.
     const visible = (v: typeof values | typeof current) =>
-      v && { endereco: v.baseUrl, cnpj: v.cnpj, chave: v.companyKey, empresa: v.companyId, conta: v.accountId, ativa: v.enabled };
+      v && { endereco: v.baseUrl, cnpj: v.cnpj, chave: v.companyKey, empresa: v.companyId, conta: v.accountId, ativa: v.enabled,
+        receber: v.importReceivables, pagar: v.importPayables };
     await logChange({
       user: admin,
       companyId: account.companyId,
@@ -88,4 +95,29 @@ export async function runChServerSync(_prev: ActionState): Promise<ActionState> 
   const r = await syncChServer({ id: admin.id, name: admin.name });
   revalidatePath("/", "layout");
   return r.ok ? { ok: r.message } : { error: r.message };
+}
+
+/** Remove do caixa os títulos a receber que vieram do CHServer. Lançamentos manuais nunca são tocados. */
+export async function clearImportedReceivables(_prev: ActionState): Promise<ActionState> {
+  return guard(async () => {
+    const admin = await requireAdmin();
+    const [settings] = await db.select().from(integrationSettings).where(eq(integrationSettings.source, "chserver"));
+    if (settings?.importReceivables !== false)
+      throw new UserError("Primeiro desmarque “Importar contas a receber” e salve; senão a próxima importação traz tudo de volta.");
+    const rows = await db
+      .update(transactions)
+      .set({ deletedAt: new Date() })
+      .where(and(eq(transactions.source, "chserver"), like(transactions.externalId, "receber:%"), isNull(transactions.deletedAt)))
+      .returning({ id: transactions.id, amount: transactions.amount, companyId: transactions.companyId });
+    await logChange({
+      user: admin,
+      companyId: settings.companyId,
+      action: "limpar_receber_importado",
+      entity: "integracao_chserver",
+      after: { removidos: rows.length, valorTotal: rows.reduce((s, r) => s + r.amount, 0) },
+    });
+    revalidatePath("/", "layout");
+    // O cartão some quando não há mais títulos; o aviso vai pela URL para continuar visível.
+    redirect(`/admin/integracoes?removidos=${rows.length}`);
+  });
 }
