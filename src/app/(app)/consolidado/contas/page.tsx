@@ -1,3 +1,4 @@
+import { PageHead } from "@/components/PageHead";
 import { PendingList } from "@/components/PendingList";
 import { consolidatedContext, param, type SearchParams } from "@/lib/page";
 
@@ -8,9 +9,7 @@ export default async function ConsolidadoContasPage({ searchParams }: { searchPa
   const { companies } = await consolidatedContext();
   return (
     <>
-      <div className="page-head">
-        <h1>A pagar e receber · Consolidado</h1>
-      </div>
+      <PageHead context="Consolidado" title="Contas a pagar e a receber" />
       <PendingList companies={companies} consolidated filter={filter} basePath="/consolidado/contas" />
     </>
   );

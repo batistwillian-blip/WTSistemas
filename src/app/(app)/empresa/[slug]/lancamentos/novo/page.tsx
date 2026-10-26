@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PageHead } from "@/components/PageHead";
 import { requireCompany } from "@/lib/access";
 import { today } from "@/lib/format";
 import { getAccounts, getCategories } from "@/lib/queries";
@@ -11,14 +12,7 @@ export default async function NovoLancamentoPage({ params }: { params: Promise<{
   const d0 = today();
   return (
     <div className="stack">
-      <div className="page-head">
-        <div>
-          <h1>Novo lançamento · {company.name}</h1>
-          <Link href={`/empresa/${slug}/lancamentos`} className="small">
-            ← Lançamentos
-          </Link>
-        </div>
-      </div>
+      <PageHead context={company.name} color={company.color} title="Novo lançamento" subtitle={<Link href={`/empresa/${slug}/lancamentos`}>← Voltar para lançamentos</Link>} />
       <TransactionForm
         companyId={company.id}
         accounts={accounts}

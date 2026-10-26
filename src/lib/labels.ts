@@ -9,3 +9,9 @@ export const natureLabels: Record<Nature, string> = {
 };
 
 export const accountKindLabels = { caixa: "Caixa físico", banco: "Conta bancária", carteira: "Carteira digital" } as const;
+
+export const companyDescriptions: Record<string, string> = {
+  "primetech-loja": "Acessórios de celular e informática",
+  "aura-educa": "EJA, graduação, pós e mestrado",
+  "primetech-sistemas": "Revenda de sistemas e consultoria em TI",
+};

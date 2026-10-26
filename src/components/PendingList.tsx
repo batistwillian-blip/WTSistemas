@@ -1,109 +1,75 @@
-import Link from "next/link";
-import { setPaid } from "@/app/actions/lancamentos";
 import type { CompanyWithRole } from "@/lib/access";
-import { addDays, formatDate, today } from "@/lib/format";
+import { addDays, formatMoney, today } from "@/lib/format";
 import { pendingItems } from "@/lib/queries";
 import { roleAllows } from "@/lib/roles";
-import { Money } from "./Money";
+import { DueItem } from "./DueItem";
 
 type Filter = "todas" | "receber" | "pagar";
 
+/** Contas pendentes em duas colunas (a receber / a pagar), agrupadas por prazo como no protótipo. */
 export async function PendingList({
   companies,
   consolidated,
-  filter,
-  basePath,
 }: {
   companies: CompanyWithRole[];
   consolidated: boolean;
-  filter: Filter;
-  basePath: string;
+  filter?: Filter;
+  basePath?: string;
 }) {
   const d0 = today();
   const all = await pendingItems(companies.map((c) => c.id), addDays(d0, 365));
-  const items = all.filter(
-    (p) => (filter === "todas" || (filter === "receber" ? p.type === "entrada" : p.type === "saida")) && !(consolidated && p.transferId),
-  );
+  const items = all.filter((p) => !(consolidated && p.transferId));
   const byId = new Map(companies.map((c) => [c.id, c]));
-  const buckets = [
-    { title: "Vencidas", items: items.filter((p) => p.dueDate < d0), tone: "red" },
-    { title: "Hoje e próximos 7 dias", items: items.filter((p) => p.dueDate >= d0 && p.dueDate <= addDays(d0, 7)), tone: "amber" },
-    { title: "De 8 a 30 dias", items: items.filter((p) => p.dueDate > addDays(d0, 7) && p.dueDate <= addDays(d0, 30)), tone: "" },
-    { title: "Depois de 30 dias", items: items.filter((p) => p.dueDate > addDays(d0, 30)), tone: "" },
-  ];
+
+  const column = (type: "entrada" | "saida", title: string) => {
+    const list = items.filter((p) => p.type === type);
+    const groups: [string, typeof list][] = [
+      ["Vencidas", list.filter((p) => p.dueDate < d0)],
+      ["Próximos 7 dias", list.filter((p) => p.dueDate >= d0 && p.dueDate <= addDays(d0, 7))],
+      ["Próximos 30 dias", list.filter((p) => p.dueDate > addDays(d0, 7) && p.dueDate <= addDays(d0, 30))],
+      ["Depois", list.filter((p) => p.dueDate > addDays(d0, 30))],
+    ];
+    return (
+      <div className="card">
+        <div className="panel-h">
+          <h2>{title}</h2>
+          <b className={`num ${type === "entrada" ? "pos" : "neg"}`}>{formatMoney(list.reduce((s, p) => s + p.amount, 0))}</b>
+        </div>
+        {list.length === 0 && <p className="muted">Nada pendente.</p>}
+        {groups
+          .filter(([, g]) => g.length)
+          .map(([label, g]) => (
+            <div key={label} style={{ marginBottom: 14 }}>
+              <div className="panel-h" style={{ marginBottom: 4 }}>
+                <span className="eyebrow" style={label === "Vencidas" ? { color: "var(--out)" } : undefined}>
+                  {label}
+                </span>
+                <span className="num muted small">{formatMoney(g.reduce((s, p) => s + p.amount, 0))}</span>
+              </div>
+              <div className="list">
+                {g.map((p) => {
+                  const c = byId.get(p.companyId)!;
+                  return (
+                    <DueItem
+                      key={p.id}
+                      item={p}
+                      companyName={consolidated ? c.name : undefined}
+                      companyColor={c.color}
+                      canPay={roleAllows(c.role, "lancar") && p.source === "manual"}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+      </div>
+    );
+  };
 
   return (
-    <div className="stack">
-      <div className="tabs">
-        {(["todas", "receber", "pagar"] as const).map((f) => (
-          <Link key={f} href={`${basePath}?tipo=${f}`} className={f === filter ? "on" : undefined}>
-            {f === "todas" ? "Todas" : f === "receber" ? "A receber" : "A pagar"}
-          </Link>
-        ))}
-      </div>
-      {buckets.map((b) => {
-        const inflow = b.items.filter((p) => p.type === "entrada").reduce((s, p) => s + p.amount, 0);
-        const outflow = b.items.filter((p) => p.type === "saida").reduce((s, p) => s + p.amount, 0);
-        return (
-          <div className="card" key={b.title}>
-            <div className="page-head" style={{ marginBottom: 8 }}>
-              <h2 style={{ margin: 0 }}>
-                {b.title} <span className={`badge ${b.tone}`}>{b.items.length}</span>
-              </h2>
-              <span className="small muted">
-                Receber <Money value={inflow} /> · Pagar <Money value={outflow} />
-              </span>
-            </div>
-            {b.items.length === 0 ? (
-              <p className="muted small">Nada aqui.</p>
-            ) : (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Vencimento</th>
-                      {consolidated && <th>Empresa</th>}
-                      <th>Descrição</th>
-                      <th>Cliente / fornecedor</th>
-                      <th className="num">Valor</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {b.items.map((p) => {
-                      const c = byId.get(p.companyId)!;
-                      const canPay = roleAllows(c.role, "lancar") && p.source === "manual";
-                      return (
-                        <tr key={p.id}>
-                          <td>{formatDate(p.dueDate)}</td>
-                          {consolidated && <td>{c.name}</td>}
-                          <td>
-                            {p.description} {p.source === "chserver" && <span className="badge blue">CHServer</span>}
-                          </td>
-                          <td className="muted">{p.counterpart}</td>
-                          <td className={`num ${p.type === "entrada" ? "pos" : "neg"}`}>
-                            <Money value={p.type === "entrada" ? p.amount : -p.amount} />
-                          </td>
-                          <td>
-                            {canPay && (
-                              <form action={setPaid} className="row-actions">
-                                <input type="hidden" name="id" value={p.id} />
-                                <button className="btn sm" type="submit" title="Marcar como pago/recebido hoje">
-                                  {p.type === "entrada" ? "Recebido" : "Pago"}
-                                </button>
-                              </form>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        );
-      })}
+    <div className="grid k2" style={{ alignItems: "start" }}>
+      {column("entrada", "A receber")}
+      {column("saida", "A pagar")}
     </div>
   );
 }

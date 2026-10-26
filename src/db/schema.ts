@@ -194,3 +194,21 @@ export type Account = typeof accounts.$inferSelect;
 export type Category = typeof categories.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type Role = (typeof roleEnum.enumValues)[number];
+
+/** Configuração do Integrador BI, preenchida pelo administrador na tela. O token fica cifrado (AES-256-GCM). */
+export const integrationSettings = pgTable("config_integracao", {
+  source: text("origem").primaryKey(),
+  baseUrl: text("endereco").notNull(),
+  cnpj: text("cnpj").notNull(),
+  companyKey: text("chave_empresa").notNull(),
+  tokenEncrypted: text("token_cifrado").notNull(),
+  companyId: integer("empresa_id")
+    .notNull()
+    .references(() => companies.id),
+  accountId: integer("conta_id")
+    .notNull()
+    .references(() => accounts.id),
+  enabled: boolean("ativa").notNull().default(true),
+  updatedAt: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: integer("atualizado_por").references(() => users.id),
+});

@@ -1,4 +1,5 @@
 import { deleteTransfer } from "@/app/actions/transferencias";
+import { PageHead } from "@/components/PageHead";
 import { ConfirmButton } from "@/components/FormStatus";
 import { Money } from "@/components/Money";
 import { intercompanyDebts } from "@/lib/finance";
@@ -23,12 +24,7 @@ export default async function EntreEmpresasPage() {
 
   return (
     <div className="stack">
-      <div className="page-head">
-        <div>
-          <h1>Entre empresas</h1>
-          <p className="muted small">Empréstimos, devoluções e aportes entre as empresas. No consolidado eles se anulam.</p>
-        </div>
-      </div>
+      <PageHead context="Consolidado" title="Dinheiro entre empresas" subtitle="Empréstimos, devoluções e aportes entre as empresas. No consolidado eles se anulam." />
 
       <div className="card">
         <h2>Quem deve a quem</h2>

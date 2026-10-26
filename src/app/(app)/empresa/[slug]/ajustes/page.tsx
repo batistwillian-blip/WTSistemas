@@ -1,4 +1,5 @@
 import { saveAccount, saveCategory, toggleCategory } from "@/app/actions/ajustes";
+import { PageHead } from "@/components/PageHead";
 import { ActionForm } from "@/components/ActionForm";
 import { Submit } from "@/components/FormStatus";
 import { Money } from "@/components/Money";
@@ -30,9 +31,7 @@ export default async function AjustesPage({ params }: { params: Promise<{ slug: 
 
   return (
     <div className="stack">
-      <div className="page-head">
-        <h1>Ajustes · {company.name}</h1>
-      </div>
+      <PageHead context={company.name} color={company.color} title="Ajustes da empresa" subtitle="Contas (caixa físico, bancos, carteiras) e categorias." />
 
       <div className="card stack">
         <div>

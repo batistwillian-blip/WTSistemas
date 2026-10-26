@@ -11,7 +11,7 @@ Controle financeiro das empresas **Primetech Loja**, **Aura Educa** e **PrimeTec
 - **Entre empresas**: empréstimo, devolução, aporte ou transferência simples. Gera a saída na origem e a entrada no destino; no consolidado se anulam. Mostra quem deve a quem.
 - **Projeção** de 30, 60 ou 90 dias com menor saldo e alerta de saldo negativo.
 - **Log de alterações** com quem, quando, IP e valores antes/depois. O banco recusa alteração ou exclusão desse log (trigger).
-- **Integração CHServer (Integrador BI)**, somente leitura: importa os títulos de Receber e Pagar da Primetech Loja a cada 15 minutos.
+- **Integração CHServer (Integrador BI)**, somente leitura: configurada pelo administrador em Administração → Integrador BI (endereço, CNPJ, chave e token, que fica cifrado no banco), com botões Testar conexão e Importar agora. Importa os títulos de Receber e Pagar a cada 15 minutos enquanto o servidor está no ar.
 
 ## Tecnologia
 
@@ -39,6 +39,7 @@ Veja `.env.example`. **Nenhum segredo vai para o repositório** (ele é público
 |---|---|
 | `DATABASE_URL` | Conexão com o PostgreSQL |
 | `ADMIN_EMAIL` / `ADMIN_SENHA_INICIAL` / `ADMIN_NOME` | Criam o primeiro administrador ao subir, só se ainda não houver usuários. Troca de senha obrigatória no 1º acesso; depois apague `ADMIN_SENHA_INICIAL` |
+| `ENCRYPTION_KEY` | Opcional. Chave para cifrar o token do CHServer no banco; sem ela, é derivada do `DATABASE_URL` |
 | `CRON_SECRET` | Segredo (32+ caracteres) que autoriza a chamada agendada de sincronização |
 | `CHSERVER_URL` | Endereço externo do CHServerWeb, ex.: `http://servidor:8080` |
 | `CHSERVER_TOKEN` | Token do Integrador BI (CHServer > Configurações > Integrador BI) |

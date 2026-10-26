@@ -10,7 +10,7 @@ const EMPRESAS = [
   {
     slug: "primetech-loja",
     nome: "Primetech Loja",
-    cor: "#2563eb",
+    cor: "#C06C17",
     ordem: 1,
     entrada: ["Vendas", "Serviços técnicos"],
     saida: ["Fornecedores / mercadorias", "Aluguel", "Salários", "Impostos", "Taxas de cartão", "Despesas gerais"],
@@ -18,7 +18,7 @@ const EMPRESAS = [
   {
     slug: "aura-educa",
     nome: "Aura Educa",
-    cor: "#7c3aed",
+    cor: "#4950B3",
     ordem: 2,
     entrada: ["Mensalidades", "Matrículas"],
     saida: ["Repasse às instituições", "Comissões", "Aluguel", "Salários", "Marketing", "Despesas gerais"],
@@ -26,7 +26,7 @@ const EMPRESAS = [
   {
     slug: "primetech-sistemas",
     nome: "PrimeTech Sistemas",
-    cor: "#059669",
+    cor: "#A03876",
     ordem: 3,
     entrada: ["Mensalidades de sistemas", "Consultoria", "Implantação"],
     saida: ["Licenças de fornecedores", "Comissões", "Salários", "Impostos", "Despesas gerais"],
@@ -41,7 +41,7 @@ const CONTAS = [
 async function seed(client) {
   for (const e of EMPRESAS) {
     await client.query(
-      "insert into empresas (slug, nome, cor, ordem) values ($1, $2, $3, $4) on conflict (slug) do nothing",
+      "insert into empresas (slug, nome, cor, ordem) values ($1, $2, $3, $4) on conflict (slug) do update set cor = excluded.cor",
       [e.slug, e.nome, e.cor, e.ordem],
     );
     const { rows } = await client.query("select id from empresas where slug = $1", [e.slug]);

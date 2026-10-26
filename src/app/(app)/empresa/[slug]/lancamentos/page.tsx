@@ -1,9 +1,10 @@
 import Link from "next/link";
+import { PageHead } from "@/components/PageHead";
 import { deleteTransaction, setPaid } from "@/app/actions/lancamentos";
 import { ConfirmButton } from "@/components/FormStatus";
 import { Money } from "@/components/Money";
 import { requireCompany } from "@/lib/access";
-import { formatDate, monthEnd, today } from "@/lib/format";
+import { formatDate, formatMoney, monthEnd, today } from "@/lib/format";
 import { param, type SearchParams } from "@/lib/page";
 import { getAccounts, listTransactions } from "@/lib/queries";
 import { roleAllows } from "@/lib/roles";
@@ -42,19 +43,28 @@ export default async function LancamentosPage({ params, searchParams }: { params
 
   return (
     <div className="stack">
-      <div className="page-head">
+      <PageHead
+        context={company.name}
+        color={company.color}
+        title="Lançamentos"
+        action={canLaunch ? { href: `/empresa/${slug}/lancamentos/novo`, label: "+ Novo lançamento" } : undefined}
+      />
+      <div className="card sumrow">
         <div>
-          <h1>Lançamentos · {company.name}</h1>
-          <p className="muted small">
-            Realizado no filtro (sem transferências): entradas <Money value={paidIn} />, saídas <Money value={paidOut} />, resultado{" "}
-            <Money value={paidIn - paidOut} colored />
-          </p>
+          <span className="eyebrow">Entradas realizadas</span>
+          <span className="v pos">{formatMoney(paidIn)}</span>
         </div>
-        {canLaunch && (
-          <Link className="btn primary" href={`/empresa/${slug}/lancamentos/novo`}>
-            + Novo lançamento
-          </Link>
-        )}
+        <div>
+          <span className="eyebrow">Saídas realizadas</span>
+          <span className="v neg">{formatMoney(paidOut)}</span>
+        </div>
+        <div>
+          <span className="eyebrow">Resultado</span>
+          <span className={`v ${paidIn - paidOut < 0 ? "neg" : ""}`}>{formatMoney(paidIn - paidOut)}</span>
+        </div>
+        <div className="small muted" style={{ alignSelf: "flex-end" }}>
+          No filtro abaixo, sem contar transferências entre empresas.
+        </div>
       </div>
 
       <form className="filters card" method="get">

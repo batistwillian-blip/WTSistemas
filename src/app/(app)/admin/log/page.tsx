@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PageHead } from "@/components/PageHead";
 import { and, desc, eq, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLog, users } from "@/db/schema";
@@ -75,12 +76,7 @@ export default async function LogPage({ searchParams }: { searchParams: SearchPa
 
   return (
     <div className="stack">
-      <div className="page-head">
-        <div>
-          <h1>Log de alterações</h1>
-          <p className="muted small">Registro de quem criou, alterou, baixou ou excluiu o quê, com os valores antes e depois. Não pode ser editado pelo sistema.</p>
-        </div>
-      </div>
+      <PageHead context="Administração" title="Log de alterações" subtitle="Quem criou, alterou, baixou ou excluiu o quê, com os valores antes e depois. Nem o sistema consegue apagar este registro." />
       <form className="filters card" method="get">
         <label>
           Empresa

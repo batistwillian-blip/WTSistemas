@@ -15,6 +15,13 @@
       "when": 1793037256211,
       "tag": "0001_log_somente_insercao",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793040667216,
+      "tag": "0002_config_integracao",
+      "breakpoints": true
     }
   ]
 }

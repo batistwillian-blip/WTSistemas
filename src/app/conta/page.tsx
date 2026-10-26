@@ -8,7 +8,7 @@ export default async function ContaPage() {
   const user = await requireUser();
   return (
     <div className="login-page">
-      <div className="card login-card stack">
+      <div className="login-card single"><div className="login-form">
         <div>
           <h1>Minha senha</h1>
           <p className="muted small">{user.email}</p>
@@ -16,6 +16,7 @@ export default async function ContaPage() {
         {user.mustChangePassword && <div className="alert info">Por segurança, troque a senha provisória antes de continuar.</div>}
         <PasswordForm />
         {!user.mustChangePassword && <Link href="/">← Voltar</Link>}
+      </div>
       </div>
     </div>
   );

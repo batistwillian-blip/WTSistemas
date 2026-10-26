@@ -1,4 +1,5 @@
 import { asc } from "drizzle-orm";
+import { PageHead } from "@/components/PageHead";
 import { createUser, updateUser } from "@/app/actions/usuarios";
 import { ActionForm } from "@/components/ActionForm";
 import { Submit } from "@/components/FormStatus";
@@ -38,14 +39,7 @@ export default async function UsuariosPage() {
 
   return (
     <div className="stack">
-      <div className="page-head">
-        <div>
-          <h1>Usuários e acessos</h1>
-          <p className="muted small">
-            Administradores veem e alteram tudo. Os demais só enxergam as empresas liberadas, no nível escolhido. Toda alteração fica no log.
-          </p>
-        </div>
-      </div>
+      <PageHead context="Administração" title="Usuários e acessos" subtitle="Administradores veem e alteram tudo. Os demais só enxergam as empresas liberadas, no nível escolhido." />
 
       <details className="box">
         <summary>Novo usuário</summary>

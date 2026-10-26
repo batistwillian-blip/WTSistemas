@@ -1,3 +1,4 @@
+import { PageHead } from "@/components/PageHead";
 import { parseDays, ProjectionView } from "@/components/ProjectionView";
 import { consolidatedContext, param, type SearchParams } from "@/lib/page";
 
@@ -6,10 +7,8 @@ export default async function ConsolidadoProjecaoPage({ searchParams }: { search
   const { companies } = await consolidatedContext();
   return (
     <>
-      <div className="page-head">
-        <h1>Projeção · Consolidado</h1>
-      </div>
-      <ProjectionView companies={companies} days={days} basePath="/consolidado/projecao" />
+      <PageHead context="Consolidado" title="Projeção de caixa" />
+      <ProjectionView companies={companies} days={days} basePath="/consolidado/projecao" consolidated />
     </>
   );
 }

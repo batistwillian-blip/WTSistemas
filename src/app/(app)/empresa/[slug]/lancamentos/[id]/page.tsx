@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PageHead } from "@/components/PageHead";
 import { notFound } from "next/navigation";
 import { requireCompany } from "@/lib/access";
 import { formatDate, today } from "@/lib/format";
@@ -15,14 +16,7 @@ export default async function EditarLancamentoPage({ params }: { params: Promise
   const [accounts, categories] = await Promise.all([getAccounts([company.id]), getCategories(company.id)]);
   return (
     <div className="stack">
-      <div className="page-head">
-        <div>
-          <h1>{editable ? "Editar lançamento" : "Lançamento"}</h1>
-          <Link href={`/empresa/${slug}/lancamentos`} className="small">
-            ← Lançamentos
-          </Link>
-        </div>
-      </div>
+      <PageHead context={company.name} color={company.color} title={editable ? "Editar lançamento" : "Lançamento"} subtitle={<Link href={`/empresa/${slug}/lancamentos`}>← Voltar para lançamentos</Link>} />
       {tx.source === "chserver" && (
         <div className="alert info">Importado do CHServer. Alterações devem ser feitas lá; a próxima sincronização atualiza aqui.</div>
       )}

@@ -1,3 +1,4 @@
+import { PageHead } from "@/components/PageHead";
 import { parseDays, ProjectionView } from "@/components/ProjectionView";
 import { requireCompany } from "@/lib/access";
 import { param, type SearchParams } from "@/lib/page";
@@ -8,10 +9,8 @@ export default async function ProjecaoPage({ params, searchParams }: { params: P
   const { company } = await requireCompany(slug);
   return (
     <>
-      <div className="page-head">
-        <h1>Projeção · {company.name}</h1>
-      </div>
-      <ProjectionView companies={[company]} days={days} basePath={`/empresa/${slug}/projecao`} />
+      <PageHead context={company.name} color={company.color} title="Projeção de caixa" />
+      <ProjectionView companies={[company]} days={days} basePath={`/empresa/${slug}/projecao`} consolidated={false} />
     </>
   );
 }

@@ -1,3 +1,4 @@
+import { PageHead } from "@/components/PageHead";
 import { PendingList } from "@/components/PendingList";
 import { requireCompany } from "@/lib/access";
 import { param, type SearchParams } from "@/lib/page";
@@ -9,9 +10,7 @@ export default async function ContasPage({ params, searchParams }: { params: Pro
   const { company } = await requireCompany(slug);
   return (
     <>
-      <div className="page-head">
-        <h1>A pagar e receber · {company.name}</h1>
-      </div>
+      <PageHead context={company.name} color={company.color} title="Contas a pagar e a receber" />
       <PendingList companies={[company]} consolidated={false} filter={filter} basePath={`/empresa/${slug}/contas`} />
     </>
   );
