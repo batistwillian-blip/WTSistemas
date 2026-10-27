@@ -52,3 +52,33 @@ describe("intercompanyDebts", () => {
     ).toEqual([]);
   });
 });
+
+import { monthClose, weekBuckets } from "@/lib/finance";
+
+describe("fechamento do mês", () => {
+  const items = [
+    { dueDate: "2026-10-20", type: "saida" as const, amount: 30000 }, // vencida
+    { dueDate: "2026-10-29", type: "entrada" as const, amount: 20000 },
+    { dueDate: "2026-10-30", type: "saida" as const, amount: 50000 },
+    { dueDate: "2026-11-05", type: "entrada" as const, amount: 90000 }, // fora do mês
+  ];
+  it("soma só o que vence até o fim do mês e diz quanto falta", () => {
+    const m = monthClose(40000, items, "2026-10-27", "2026-10-31");
+    expect(m.receive).toBe(20000);
+    expect(m.pay).toBe(80000);
+    expect(m.endBalance).toBe(-20000);
+    expect(m.shortfall).toBe(20000);
+    expect(m.minBalance).toBe(-20000);
+    expect(m.minDate).toBe("2026-10-30");
+    expect(m.daysLeft).toBe(5);
+    expect(m.overdueOut).toBe(30000);
+  });
+  it("sem falta quando fecha no verde", () => {
+    expect(monthClose(100000, items, "2026-10-27", "2026-10-31").shortfall).toBe(0);
+  });
+  it("semanas de segunda a domingo", () => {
+    const w = weekBuckets(40000, items, "2026-10-27", 2); // terça
+    expect(w[0]).toMatchObject({ from: "2026-10-27", to: "2026-11-01", inflow: 20000, outflow: 80000, endBalance: -20000 });
+    expect(w[1]).toMatchObject({ from: "2026-11-02", to: "2026-11-08", inflow: 90000, endBalance: 70000 });
+  });
+});

@@ -266,3 +266,32 @@ details.box[open] summary { margin-bottom: 12px; }
 .pw-eye:hover { color: var(--ink); background: var(--surface); }
 .pw-eye:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .codes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 14px; font-family: var(--f-num); font-size: 15px; letter-spacing: 0.04em; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 8px; background: var(--sunk); }
+
+/* Painel de entrada: fechamento do mês e onde focar */
+.insight { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 24px; border-left: 4px solid var(--in); }
+.insight.bad { border-left-color: var(--out); }
+.insight h2 { font-size: 22px; line-height: 1.25; margin: 6px 0 4px; }
+.insight-main { display: flex; flex-direction: column; gap: 10px; }
+.insight .eq { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 12px; padding: 12px 14px; background: var(--sunk); border-radius: 10px; }
+.insight .eq div { display: flex; flex-direction: column; gap: 2px; }
+.insight .eq span { font-size: 11.5px; color: var(--muted); }
+.insight .eq b { font-size: 16px; }
+.insight .eq i { font-style: normal; color: var(--muted); font-size: 18px; padding-bottom: 1px; }
+.meter { height: 8px; border-radius: 4px; background: var(--sunk); overflow: hidden; border: 1px solid var(--line); }
+.meter div { height: 100%; background: var(--in); }
+.insight.bad .meter div { background: #d9822b; }
+.insight-focus h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 0 0 8px; }
+.insight-focus ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.insight-focus li { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 9px 12px; border-radius: 8px; background: var(--sunk); border-left: 3px solid var(--line); font-size: 13.5px; line-height: 1.4; }
+.insight-focus li.red { border-left-color: var(--out); }
+.insight-focus li.amber { border-left-color: #d9822b; }
+.insight-focus li.green { border-left-color: var(--in); }
+.insight-focus li .btn { flex-shrink: 0; }
+.weeks td { vertical-align: middle; }
+.weeks tr.month-break td { border-top: 2px solid var(--muted); }
+.wbar { display: flex; align-items: center; gap: 8px; min-width: 180px; }
+.wbar b { white-space: nowrap; }
+.wbar > div { height: 10px; border-radius: 3px; flex-shrink: 0; }
+.wbar .pos-bar { background: color-mix(in srgb, var(--in) 55%, transparent); }
+.wbar .neg-bar { background: color-mix(in srgb, var(--out) 60%, transparent); }
+@media (max-width: 900px) { .insight { grid-template-columns: 1fr; } }

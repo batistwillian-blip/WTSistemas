@@ -91,3 +91,61 @@ export function intercompanyDebts(list: TransferLike[]): Debt[] {
   }
   return out.sort((a, b) => b.amount - a.amount);
 }
+
+export type MonthClose = {
+  monthEnd: string;
+  receive: number;
+  pay: number;
+  endBalance: number;
+  /** Quanto falta entrar (além do já previsto) para terminar o mês com saldo zero ou positivo. */
+  shortfall: number;
+  /** Menor saldo até o fim do mês e o dia em que acontece. */
+  minBalance: number;
+  minDate: string;
+  daysLeft: number;
+  overdueIn: number;
+  overdueOut: number;
+};
+
+/** Fechamento do mês: o que ainda entra e sai até o último dia do mês (vencidos contam como hoje). */
+export function monthClose(balance: number, items: PendingItem[], d0: string, monthEnd: string): MonthClose {
+  const inMonth = items.filter((i) => i.dueDate <= monthEnd);
+  const receive = inMonth.filter((i) => i.type === "entrada").reduce((s, i) => s + i.amount, 0);
+  const pay = inMonth.filter((i) => i.type === "saida").reduce((s, i) => s + i.amount, 0);
+  const days = Math.round((Date.parse(monthEnd) - Date.parse(d0)) / 86_400_000);
+  const proj = project(balance, inMonth, d0, days);
+  const endBalance = balance + receive - pay;
+  return {
+    monthEnd,
+    receive,
+    pay,
+    endBalance,
+    shortfall: endBalance < 0 ? -endBalance : 0,
+    minBalance: proj.minBalance,
+    minDate: proj.minDate,
+    daysLeft: days + 1,
+    overdueIn: proj.overdueIn,
+    overdueOut: proj.overdueOut,
+  };
+}
+
+export type WeekBucket = { from: string; to: string; inflow: number; outflow: number; endBalance: number };
+
+/** Semanas de segunda a domingo a partir de hoje (a primeira vai de hoje até domingo; vencidos entram nela). */
+export function weekBuckets(balance: number, items: PendingItem[], d0: string, weeks: number): WeekBucket[] {
+  const out: WeekBucket[] = [];
+  const dow = new Date(d0 + "T12:00:00Z").getUTCDay(); // 0 = domingo
+  let from = d0;
+  let to = addDays(d0, dow === 0 ? 0 : 7 - dow);
+  let running = balance;
+  for (let w = 0; w < weeks; w++) {
+    const inWeek = items.filter((i) => (w === 0 ? i.dueDate <= to : i.dueDate >= from && i.dueDate <= to));
+    const inflow = inWeek.filter((i) => i.type === "entrada").reduce((s, i) => s + i.amount, 0);
+    const outflow = inWeek.filter((i) => i.type === "saida").reduce((s, i) => s + i.amount, 0);
+    running += inflow - outflow;
+    out.push({ from, to, inflow, outflow, endBalance: running });
+    from = addDays(to, 1);
+    to = addDays(from, 6);
+  }
+  return out;
+}

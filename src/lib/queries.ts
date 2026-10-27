@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, gte, ilike, inArray, isNull, isNotNull, lte, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { accounts, categories, companies, transactions, transfers } from "@/db/schema";
+import { accounts, categories, companies, sales, transactions, transfers } from "@/db/schema";
 import { today } from "./format";
 
 // Lançamentos "fora do saldo" (pagos importados do CH só para consulta) não aparecem em saldo, totais nem listas de lançamentos.
@@ -271,4 +271,17 @@ export async function consultationTotals(companyIds: number[], from: string, to:
     .groupBy(name)
     .orderBy(desc(sql`sum(${transactions.amount})`));
   return rows.map((r) => ({ name: r.name, total: Number(r.total), n: r.n }));
+}
+
+/** Vendas líquidas (notas do CH, sem canceladas e devoluções) no período, só para indicadores. */
+export async function salesTotal(companyIds: number[], from: string, to: string) {
+  if (companyIds.length === 0) return { net: 0, notes: 0 };
+  const [r] = await db
+    .select({
+      net: sql<string>`coalesce(sum(case when ${sales.canceled} then 0 else greatest(${sales.total} - ${sales.returned}, 0) end), 0)`,
+      notes: sql<number>`(count(*) filter (where not ${sales.canceled}))::int`,
+    })
+    .from(sales)
+    .where(and(inArray(sales.companyId, companyIds), isNull(sales.deletedAt), gte(sales.date, from), lte(sales.date, to)));
+  return { net: Number(r.net), notes: r.notes };
 }
