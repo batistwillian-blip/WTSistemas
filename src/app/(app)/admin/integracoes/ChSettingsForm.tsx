@@ -106,10 +106,11 @@ export function ChSettingsForm({ initial, accounts }: { initial: ChFormInitial; 
         </p>
         <div className="filters">
           <label className="check">
-            <input type="checkbox" name="paidAffectBalance" defaultChecked={initial.paidAffectBalance} /> Contas pagas no CH entram no saldo
+            <input type="checkbox" name="paidAffectBalance" defaultChecked={initial.paidAffectBalance} /> Somar as contas pagas no saldo do caixa
+            (desmarcado: ficam só para consulta)
           </label>
           <label className="check">
-            <input type="checkbox" name="salesAffectBalance" defaultChecked={initial.salesAffectBalance} /> Vendas do dia entram no saldo
+            <input type="checkbox" name="salesAffectBalance" defaultChecked={initial.salesAffectBalance} /> Somar as vendas do dia no saldo do caixa
           </label>
           <label>
             A partir de

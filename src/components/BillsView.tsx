@@ -59,7 +59,7 @@ export async function BillsView({
           {off.length > 0 && (
             <p className="help" style={{ marginBottom: 8 }}>
               {off.length} {off.length === 1 ? "conta veio" : "contas vieram"} do CHServer só para consulta ({formatMoney(off.reduce((s, t) => s + t.amount, 0))}): não
-              entram no saldo nem no painel.
+              entram no saldo do caixa (aparecem só aqui e em Relatórios).
             </p>
           )}
           {list.length === 0 ? (

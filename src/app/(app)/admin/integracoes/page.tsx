@@ -256,8 +256,8 @@ export default async function IntegracoesPage({ searchParams }: { searchParams: 
           </p>
           <p className="help">
             O que é importado: contas a pagar com vencimento entre 2 anos atrás e 5 anos à frente, seguindo a situação do CH (cancelado ou excluído
-            não entra; pago fica em Contas a pagar → Pagos e só entra no saldo se “Contas pagas no CH entram no saldo” estiver marcado) e as
-            vendas (notas de saída): na primeira vez os últimos 12 meses, depois os últimos 40 dias a cada importação. Com “Vendas do dia entram no saldo” marcado, o total vendido em cada dia entra no caixa como “Vendas do dia”;
+            não entra; pago fica em Contas a pagar → Pagos e só soma no saldo se “Somar as contas pagas no saldo do caixa” estiver marcado) e as
+            vendas (notas de saída): na primeira vez os últimos 12 meses, depois os últimos 40 dias a cada importação. Com “Somar as vendas do dia no saldo do caixa” marcado, o total vendido em cada dia entra no caixa como “Vendas do dia”;
             notas canceladas e devoluções são descontadas. Nada disso vem marcado: o saldo é o que você lança. A cada importação, o que foi corrigido no CHServer é atualizado aqui, e o que foi excluído lá sai do caixa. O
             contas a receber do CH nunca é importado. Os lançamentos importados aparecem com a etiqueta “Automático” e não podem ser editados aqui; a correção é feita no CHServer.
           </p>

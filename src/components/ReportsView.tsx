@@ -1,7 +1,7 @@
 import type { CompanyWithRole } from "@/lib/access";
 import { addMonths, formatDate, formatMoney, monthEnd, monthStart } from "@/lib/format";
 import { monthsBetween, previousPeriod, type Period } from "@/lib/period";
-import { categoryTotals, monthlyTotals, realizedTotals } from "@/lib/queries";
+import { categoryTotals, consultationTotals, monthlyTotals, realizedTotals } from "@/lib/queries";
 import { BarChart } from "./BarChart";
 import { PeriodFilter } from "./PeriodFilter";
 
@@ -17,11 +17,12 @@ export async function ReportsView({ companies, consolidated, period }: { compani
   const prev = previousPeriod(period);
   // Gráfico: 12 meses terminando no fim do período escolhido.
   const chartFrom = addMonths(monthStart(period.to), -11);
-  const [now, before, monthly, cats, ...perCompany] = await Promise.all([
+  const [now, before, monthly, cats, consult, ...perCompany] = await Promise.all([
     realizedTotals(ids, period.from, period.to),
     realizedTotals(ids, prev.from, prev.to),
     monthlyTotals(ids, chartFrom, monthEnd(period.to)),
     categoryTotals(ids, period.from, period.to),
+    consultationTotals(ids, period.from, period.to),
     ...(consolidated ? companies.map((c) => realizedTotals([c.id], period.from, period.to)) : []),
   ]);
   const months = monthsBetween(chartFrom, period.to);
@@ -136,6 +137,35 @@ export async function ReportsView({ companies, consolidated, period }: { compani
         {catTable("entrada", "Entradas por categoria")}
         {catTable("saida", "Saídas por categoria")}
       </div>
+      {consult.length > 0 && (
+        <div className="card table-wrap">
+          <div className="panel-h">
+            <h2>Pagas no CHServer (só consulta)</h2>
+            <b className="num">{formatMoney(consult.reduce((s, r) => s + r.total, 0))}</b>
+          </div>
+          <p className="help" style={{ marginBottom: 8 }}>
+            Contas pagas registradas no CH no período. Não somam no caixa nem nos números acima; servem só para acompanhar.
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Categoria no CH</th>
+                <th className="num">Contas</th>
+                <th className="num">Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {consult.map((r) => (
+                <tr key={r.name}>
+                  <td>{r.name}</td>
+                  <td className="num">{r.n}</td>
+                  <td className="num">{formatMoney(r.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

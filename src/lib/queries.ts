@@ -250,3 +250,25 @@ export async function categoryTotals(companyIds: number[], from: string, to: str
     .orderBy(desc(sql`sum(${transactions.amount})`));
   return rows.map((r) => ({ type: r.type, name: r.name, total: Number(r.total), n: r.n }));
 }
+
+/** Contas pagas no CH guardadas só para consulta (fora do saldo), por categoria, no período do pagamento. */
+export async function consultationTotals(companyIds: number[], from: string, to: string) {
+  if (companyIds.length === 0) return [];
+  const name = sql<string>`coalesce(${transactions.externalCategory}, 'Sem categoria')`;
+  const rows = await db
+    .select({ name, total: sql<string>`sum(${transactions.amount})`, n: sql<number>`count(*)::int` })
+    .from(transactions)
+    .where(
+      and(
+        inArray(transactions.companyId, companyIds),
+        isNull(transactions.deletedAt),
+        eq(transactions.offBalance, true),
+        eq(transactions.type, "saida"),
+        gte(transactions.paidAt, from),
+        lte(transactions.paidAt, to),
+      ),
+    )
+    .groupBy(name)
+    .orderBy(desc(sql`sum(${transactions.amount})`));
+  return rows.map((r) => ({ name: r.name, total: Number(r.total), n: r.n }));
+}
