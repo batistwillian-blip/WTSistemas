@@ -250,3 +250,18 @@ export const sales = pgTable(
   },
   (t) => [index("vendas_empresa_data_idx").on(t.companyId, t.date)],
 );
+
+/** Códigos de recuperação de senha (uso único). Guardamos só o hash SHA-256; o código aparece uma vez para o usuário. */
+export const recoveryCodes = pgTable(
+  "codigos_recuperacao",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("usuario_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    codeHash: text("codigo_hash").notNull(),
+    createdAt: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+    usedAt: timestamp("usado_em", { withTimezone: true }),
+  },
+  (t) => [index("codigos_usuario_idx").on(t.userId)],
+);

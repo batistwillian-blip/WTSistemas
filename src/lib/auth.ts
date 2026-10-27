@@ -41,14 +41,7 @@ export async function attemptLogin(email: string, password: string): Promise<Log
   }
   const valid = await verifyPassword(user.passwordHash, password);
   if (!valid) {
-    const attempts = user.failedAttempts + 1;
-    await db
-      .update(users)
-      .set({
-        failedAttempts: attempts >= MAX_ATTEMPTS ? 0 : attempts,
-        lockedUntil: attempts >= MAX_ATTEMPTS ? new Date(Date.now() + LOCK_MINUTES * 60_000) : null,
-      })
-      .where(eq(users.id, user.id));
+    await registerFailedAttempt(user);
     return generic;
   }
   await db
@@ -56,6 +49,18 @@ export async function attemptLogin(email: string, password: string): Promise<Log
     .set({ failedAttempts: 0, lockedUntil: null, lastLoginAt: new Date() })
     .where(eq(users.id, user.id));
   return { ok: true, user };
+}
+
+/** Conta uma tentativa errada (login ou recuperação); na 5ª, bloqueia por 15 minutos. */
+export async function registerFailedAttempt(user: Pick<User, "id" | "failedAttempts">) {
+  const attempts = user.failedAttempts + 1;
+  await db
+    .update(users)
+    .set({
+      failedAttempts: attempts >= MAX_ATTEMPTS ? 0 : attempts,
+      lockedUntil: attempts >= MAX_ATTEMPTS ? new Date(Date.now() + LOCK_MINUTES * 60_000) : null,
+    })
+    .where(eq(users.id, user.id));
 }
 
 export async function startSession(userId: number) {

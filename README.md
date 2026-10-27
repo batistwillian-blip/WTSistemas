@@ -4,7 +4,7 @@ Controle financeiro das empresas **Primetech Loja**, **Aura Educa** e **PrimeTec
 
 ## O que tem
 
-- **Login com e-mail e senha.** Senhas guardadas com argon2id, sessão em cookie `httpOnly` que expira em 12 horas, bloqueio de 15 minutos após 5 tentativas erradas e troca obrigatória da senha provisória no primeiro acesso.
+- **Login com e-mail e senha**, com botão para mostrar a senha e recuperação por códigos de uso único (gerados em Minha senha; “Esqueci minha senha” no login). Senhas guardadas com argon2id, sessão em cookie `httpOnly` que expira em 12 horas, bloqueio de 15 minutos após 5 tentativas erradas e troca obrigatória da senha provisória no primeiro acesso.
 - **Menu por empresa** (visão geral, lançamentos, vendas na empresa ligada ao CHServer, a pagar e receber, projeção, ajustes) e **Consolidado** (visão geral, a pagar e receber, projeção, entre empresas).
 - **Permissões por empresa**: somente leitura, lança e edita, ou gestor (também exclui e configura contas e categorias). Administradores veem tudo. A permissão é conferida no servidor em toda tela e toda ação.
 - **Lançamentos** com conta (caixa físico, banco, carteira), categoria, vencimento e baixa. Pendente = conta a pagar/receber. Opção de repetir todo mês.
@@ -39,6 +39,7 @@ Veja `.env.example`. **Nenhum segredo vai para o repositório** (ele é público
 |---|---|
 | `DATABASE_URL` | Conexão com o PostgreSQL |
 | `ADMIN_EMAIL` / `ADMIN_SENHA_INICIAL` / `ADMIN_NOME` | Criam o primeiro administrador ao subir, só se ainda não houver usuários. Troca de senha obrigatória no 1º acesso; depois apague `ADMIN_SENHA_INICIAL` |
+| `ADMIN_RESET_SENHA` / `ADMIN_RESET_EMAIL` | Reset de emergência: ao subir, troca a senha de `ADMIN_RESET_EMAIL` (ou `ADMIN_EMAIL`) por `ADMIN_RESET_SENHA`, desbloqueia e obriga a trocar no próximo login. Vale uma vez por valor; apague depois |
 | `ENCRYPTION_KEY` | Opcional. Chave para cifrar o token do CHServer no banco; sem ela, é derivada do `DATABASE_URL` |
 | `CRON_SECRET` | Segredo (32+ caracteres) que autoriza a chamada agendada de sincronização |
 | `CHSERVER_URL` | Endereço externo do CHServerWeb, ex.: `http://servidor:8080` |

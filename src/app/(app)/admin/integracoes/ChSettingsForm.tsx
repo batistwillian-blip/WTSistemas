@@ -3,6 +3,7 @@
 import { startTransition, useActionState } from "react";
 import { saveChSettings, testChSettings } from "@/app/actions/integracoes";
 import { Feedback } from "@/components/FormStatus";
+import { PasswordInput } from "@/components/PasswordInput";
 
 type Account = { id: number; label: string; company: string };
 export type ChFormInitial = {
@@ -53,9 +54,8 @@ export function ChSettingsForm({ initial, accounts }: { initial: ChFormInitial; 
         </label>
         <label>
           Token do Integrador BI
-          <input
+          <PasswordInput
             name="token"
-            type="password"
             placeholder={initial.hasToken ? "Já guardado. Deixe em branco para manter" : "Cole aqui o token"}
             required={!initial.hasToken}
             autoComplete="new-password"

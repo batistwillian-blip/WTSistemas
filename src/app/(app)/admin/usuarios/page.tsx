@@ -8,6 +8,7 @@ import { companyAccess, users, type Company, type Role } from "@/db/schema";
 import { requireAdmin } from "@/lib/access";
 import { allCompanies } from "@/lib/queries";
 import { roleLabels } from "@/lib/roles";
+import { PasswordInput } from "@/components/PasswordInput";
 
 function AccessFields({ companies, current }: { companies: Company[]; current: Map<number, Role> }) {
   return (
@@ -55,7 +56,7 @@ export default async function UsuariosPage() {
             </label>
             <label>
               Senha provisória
-              <input name="password" type="password" autoComplete="new-password" required minLength={10} />
+              <PasswordInput name="password" autoComplete="new-password" required minLength={10} />
             </label>
           </div>
           <label className="check">
@@ -86,7 +87,7 @@ export default async function UsuariosPage() {
                 </label>
                 <label>
                   Nova senha provisória (opcional)
-                  <input name="password" type="password" autoComplete="new-password" minLength={10} placeholder="Deixe em branco para manter" />
+                  <PasswordInput name="password" autoComplete="new-password" minLength={10} placeholder="Deixe em branco para manter" />
                 </label>
               </div>
               <div className="filters">

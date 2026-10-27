@@ -3,6 +3,7 @@
 import { login } from "@/app/actions/auth";
 import { ActionForm } from "@/components/ActionForm";
 import { Submit } from "@/components/FormStatus";
+import { PasswordInput } from "@/components/PasswordInput";
 
 export function LoginForm() {
   return (
@@ -13,7 +14,7 @@ export function LoginForm() {
       </label>
       <label>
         Senha
-        <input name="password" type="password" autoComplete="current-password" required />
+        <PasswordInput name="password" autoComplete="current-password" required />
       </label>
       <Submit>Entrar</Submit>
     </ActionForm>

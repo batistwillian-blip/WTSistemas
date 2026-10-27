@@ -258,3 +258,11 @@ details.box[open] summary { margin-bottom: 12px; }
 
 .nav-sub { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--side-muted); padding: 10px 10px 3px 29px; }
 .nav-i.sub { padding-left: 42px; }
+
+/* Campo de senha com o botão "olhinho" */
+.pw { position: relative; display: block; }
+.pw input { width: 100%; padding-right: 42px; }
+.pw-eye { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 34px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+.pw-eye:hover { color: var(--ink); background: var(--surface); }
+.pw-eye:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.codes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 14px; font-family: var(--f-num); font-size: 15px; letter-spacing: 0.04em; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 8px; background: var(--sunk); }

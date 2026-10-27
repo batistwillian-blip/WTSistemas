@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Mark } from "@/components/Mark";
 import { getCurrentUser } from "@/lib/auth";
@@ -33,6 +34,9 @@ export default async function LoginPage() {
         <div className="login-form">
           <h2>Entrar</h2>
           <LoginForm />
+          <Link href="/recuperar" className="small">
+            Esqueci minha senha
+          </Link>
         </div>
       </div>
     </div>
