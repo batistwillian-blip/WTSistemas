@@ -58,6 +58,8 @@ export async function pendingItems(companyIds: number[], untilDue?: string) {
       counterpart: transactions.counterpart,
       transferId: transactions.transferId,
       source: transactions.source,
+      accountId: transactions.accountId,
+      originalAmount: transactions.originalAmount,
     })
     .from(transactions)
     .where(
@@ -184,6 +186,12 @@ export async function paidBills(companyIds: number[], type: "entrada" | "saida",
       source: transactions.source,
       offBalance: transactions.offBalance,
       accountName: accounts.name,
+      interest: transactions.interest,
+      discount: transactions.discount,
+      partialOf: transactions.partialOf,
+      transferId: transactions.transferId,
+      // Parcial cuja conta de origem já foi quitada: estorna-se primeiro o pagamento final.
+      parentPaid: sql<boolean>`exists (select 1 from lancamentos o where o.id = ${transactions.partialOf} and o.pago_em is not null and o.excluido_em is null)`,
     })
     .from(transactions)
     .innerJoin(accounts, eq(accounts.id, transactions.accountId))

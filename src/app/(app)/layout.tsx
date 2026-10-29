@@ -7,6 +7,7 @@ import { getUserCompanies } from "@/lib/access";
 import { requireUser } from "@/lib/auth";
 import { formatMoney, today } from "@/lib/format";
 import { accountBalances, pendingItems } from "@/lib/queries";
+import { extendOpenEnded } from "@/lib/recurrence";
 import { roleAllows } from "@/lib/roles";
 import { db } from "@/db";
 import { integrationSettings } from "@/db/schema";
@@ -19,6 +20,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const companies = await getUserCompanies(user);
   const ids = companies.map((c) => c.id);
   const d0 = today();
+  // Contas fixas sem fim: garante os próximos 12 meses gerados (barato quando não há nada a fazer).
+  await extendOpenEnded(ids).catch((e) => console.error("Falha ao estender contas fixas:", e));
   const [balances, overdueItems, [integration]] = await Promise.all([
     accountBalances(ids),
     pendingItems(ids, d0),

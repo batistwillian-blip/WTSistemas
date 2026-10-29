@@ -7,6 +7,23 @@ import { createHmac } from "node:crypto";
 import { hash } from "@node-rs/argon2";
 import pg from "pg";
 
+// Categorias de despesa do dia a dia para as empresas que usam o sistema como ERP (Aura e Sistemas).
+// Novas categorias podem ser criadas em Ajustes da empresa.
+const DESPESAS_FIXAS = [
+  "Condomínio",
+  "Água",
+  "Luz",
+  "Internet e telefone",
+  "Encargos e benefícios",
+  "Terceiros / prestadores",
+  "Contabilidade",
+  "Impostos",
+  "Material de limpeza",
+  "Material de escritório",
+  "Manutenção",
+  "Tarifas bancárias",
+];
+
 const EMPRESAS = [
   {
     slug: "primetech-loja",
@@ -21,16 +38,16 @@ const EMPRESAS = [
     nome: "Aura Educa",
     cor: "#4950B3",
     ordem: 2,
-    entrada: ["Mensalidades", "Matrículas"],
-    saida: ["Repasse às instituições", "Comissões", "Aluguel", "Salários", "Marketing", "Despesas gerais"],
+    entrada: ["Mensalidades", "Matrículas", "Taxas e certificados", "Outras receitas"],
+    saida: ["Repasse às instituições", "Comissões", "Aluguel", "Salários", "Marketing", "Despesas gerais", ...DESPESAS_FIXAS],
   },
   {
     slug: "primetech-sistemas",
     nome: "PrimeTech Sistemas",
     cor: "#A03876",
     ordem: 3,
-    entrada: ["Mensalidades de sistemas", "Consultoria", "Implantação"],
-    saida: ["Licenças de fornecedores", "Comissões", "Salários", "Impostos", "Despesas gerais"],
+    entrada: ["Mensalidades de sistemas", "Consultoria", "Implantação", "Suporte técnico", "Outras receitas"],
+    saida: ["Licenças de fornecedores", "Comissões", "Salários", "Impostos", "Despesas gerais", "Aluguel", "Marketing", ...DESPESAS_FIXAS],
   },
 ];
 

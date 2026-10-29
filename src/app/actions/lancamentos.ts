@@ -2,12 +2,13 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, gte, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { accounts, categories, transactions } from "@/db/schema";
 import { requireCompanyId } from "@/lib/access";
 import { logChange } from "@/lib/audit";
-import { addMonths, today } from "@/lib/format";
+import { planSeries, settle, OPEN_ENDED_MONTHS, type SeriesMode } from "@/lib/billing";
+import { today } from "@/lib/format";
 import { guard, int, isoDate, money, optStr, str, UserError, type ActionState } from "@/lib/form";
 
 async function loadEditable(id: number) {
@@ -75,18 +76,64 @@ export async function saveTransaction(_prev: ActionState, fd: FormData): Promise
         .where(eq(transactions.id, id))
         .returning();
       await logChange({ user, companyId, action: "editar", entity: "lancamento", entityId: id, before, after });
+      // "Esta e as próximas": leva valor, conta, categoria e fornecedor para as ocorrências seguintes ainda em aberto.
+      if (str(fd, "scope") === "proximas" && before.recurrenceGroup) {
+        const next = await db
+          .update(transactions)
+          .set({
+            amount: values.amount,
+            accountId: values.accountId,
+            categoryId: values.categoryId,
+            counterpart: values.counterpart,
+            // Na parcelada cada uma tem o seu "(k/N)"; na fixa a descrição acompanha.
+            ...(before.recurrence === "parcelada" ? {} : { description: values.description }),
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(transactions.recurrenceGroup, before.recurrenceGroup),
+              gte(transactions.dueDate, before.dueDate),
+              isNull(transactions.paidAt),
+              isNull(transactions.deletedAt),
+              isNull(transactions.originalAmount),
+              sql`${transactions.id} <> ${id}`,
+            ),
+          )
+          .returning({ id: transactions.id });
+        if (next.length) {
+          await logChange({ user, companyId, action: "editar", entity: "lancamento", entityId: next.map((n) => n.id).join(","), after: { ...values, aplicadoAsProximas: next.length } });
+        }
+        revalidatePath("/", "layout");
+        return { ok: `Lançamento atualizado, junto com ${next.length} ${next.length === 1 ? "ocorrência seguinte" : "ocorrências seguintes"}.` };
+      }
     } else {
-      const repeat = Math.min(Math.max(int(fd, "repeat") ?? 1, 1), 36);
-      const group = repeat > 1 ? randomUUID() : null;
-      const rows = Array.from({ length: repeat }, (_, i) => ({
+      const rawMode = str(fd, "mode");
+      const mode: SeriesMode = rawMode === "mensal" || rawMode === "parcelada" ? rawMode : "unica";
+      const openEnded = mode === "mensal" && str(fd, "months") === "sem_fim";
+      const count =
+        mode === "mensal"
+          ? openEnded
+            ? OPEN_ENDED_MONTHS
+            : Math.min(Math.max(int(fd, "months") ?? 12, 2), 60)
+          : mode === "parcelada"
+            ? Math.min(Math.max(int(fd, "installments") ?? 2, 2), 72)
+            : 1;
+      const amountIsTotal = str(fd, "amountIs") !== "parcela";
+      if (mode === "parcelada" && amountIsTotal && amount < count) throw new UserError("Valor pequeno demais para dividir nessas parcelas.");
+      const plan = planSeries({ mode, amount, dueDate, description, count, amountIsTotal });
+      const group = plan.length > 1 ? randomUUID() : null;
+      const rows = plan.map((p, i) => ({
         ...values,
+        ...p,
         companyId,
-        dueDate: addMonths(dueDate, i),
         // Só a primeira ocorrência pode nascer paga; as próximas ficam pendentes.
         paidAt: i === 0 ? paidAt : null,
         recurrenceGroup: group,
+        recurrence: group ? mode : null,
+        openEnded,
         createdBy: user.id,
       }));
+      const repeat = rows.length;
       const created = await db.insert(transactions).values(rows).returning();
       await logChange({
         user,
@@ -109,7 +156,13 @@ export async function setPaid(fd: FormData) {
   if (!before) return;
   const { user } = await requireCompanyId(before.companyId, "lancar");
   if (before.source !== "manual") return;
-  const paidAt = fd.get("undo") === "1" ? null : (isoDate(fd, "paidAt") ?? today());
+  const undo = fd.get("undo") === "1";
+  if (undo && !before.transferId) {
+    await undoSettlement(before, user);
+    revalidatePath("/", "layout");
+    return;
+  }
+  const paidAt = undo ? null : (isoDate(fd, "paidAt") ?? today());
   // Transferência: os dois lados mudam juntos.
   const where = before.transferId ? eq(transactions.transferId, before.transferId) : eq(transactions.id, id);
   if (before.transferId) {
@@ -129,12 +182,125 @@ export async function setPaid(fd: FormData) {
   revalidatePath("/", "layout");
 }
 
+type Tx = typeof transactions.$inferSelect;
+
+/** Estorno: a conta volta a ficar em aberto com o valor original; um pagamento parcial devolve o valor à conta de origem. */
+async function undoSettlement(before: Tx, user: { id: number; name: string }) {
+  if (!before.paidAt) return;
+  const principal = before.amount - before.interest + before.discount;
+  await db.transaction(async (tx) => {
+    if (before.partialOf) {
+      const [parent] = await tx.select().from(transactions).where(eq(transactions.id, before.partialOf)).for("update");
+      // Com a conta de origem já quitada, estorne primeiro o pagamento final.
+      if (!parent || parent.paidAt || parent.deletedAt) return;
+      const restored = parent.amount + principal;
+      await tx
+        .update(transactions)
+        .set({ amount: restored, originalAmount: restored === parent.originalAmount ? null : parent.originalAmount, updatedAt: new Date() })
+        .where(eq(transactions.id, parent.id));
+      await tx.update(transactions).set({ deletedAt: new Date() }).where(eq(transactions.id, before.id));
+      await logChange(
+        { user, companyId: before.companyId, action: "estornar_baixa", entity: "lancamento", entityId: `${before.id},${parent.id}`, before, after: { contaDeOrigem: parent.id, valorEmAberto: restored } },
+        tx,
+      );
+      return;
+    }
+    const [after] = await tx
+      .update(transactions)
+      .set({ paidAt: null, amount: principal, interest: 0, discount: 0, updatedAt: new Date() })
+      .where(eq(transactions.id, before.id))
+      .returning();
+    await logChange({ user, companyId: before.companyId, action: "estornar_baixa", entity: "lancamento", entityId: before.id, before, after }, tx);
+  });
+}
+
+/**
+ * Baixa de uma conta: data, valor pago, juros/desconto e de qual conta saiu (ou entrou).
+ * Pagamento parcial vira um lançamento pago próprio e a conta de origem continua aberta com o restante.
+ */
+export async function settleTransaction(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  return guard(async () => {
+    const id = int(fd, "id");
+    if (!id) throw new UserError("Conta inválida.");
+    const [current] = await db.select().from(transactions).where(and(eq(transactions.id, id), isNull(transactions.deletedAt)));
+    if (!current) throw new UserError("Conta não encontrada.");
+    const { user } = await requireCompanyId(current.companyId, "lancar");
+    if (current.source !== "manual" || current.offBalance) throw new UserError("Contas do CHServer são baixadas lá; a sincronização atualiza aqui.");
+    if (current.transferId) throw new UserError("Transferências são baixadas em Entre empresas.");
+    if (current.paidAt) throw new UserError("Esta conta já foi baixada.");
+
+    const paidAt = isoDate(fd, "paidAt") ?? today();
+    const accountId = int(fd, "accountId");
+    const [account] = accountId
+      ? await db.select().from(accounts).where(and(eq(accounts.id, accountId), eq(accounts.companyId, current.companyId)))
+      : [];
+    if (!account) throw new UserError("Escolha de qual conta saiu o dinheiro.");
+    const interest = money(fd, "interest") ?? 0;
+    const discount = money(fd, "discount") ?? 0;
+    const paid = money(fd, "paid") ?? current.amount + interest - discount;
+
+    const word = current.type === "entrada" ? "Recebimento" : "Pagamento";
+    const done = await db.transaction(async (tx) => {
+      const [before] = await tx.select().from(transactions).where(eq(transactions.id, id)).for("update");
+      if (!before || before.paidAt || before.deletedAt) throw new UserError("Esta conta mudou enquanto você preenchia. Recarregue a página.");
+      const r = settle({ open: before.amount, paid, interest, discount, partial: fd.get("partial") === "on" });
+      if ("error" in r) throw new UserError(r.error);
+      if (r.kind === "total") {
+        const [after] = await tx
+          .update(transactions)
+          .set({ paidAt, amount: r.paid, interest: r.interest, discount: r.discount, accountId: account.id, updatedAt: new Date() })
+          .where(eq(transactions.id, id))
+          .returning();
+        await logChange({ user, companyId: before.companyId, action: "baixar", entity: "lancamento", entityId: id, before, after }, tx);
+        return `${word} registrado.`;
+      }
+      const [part] = await tx
+        .insert(transactions)
+        .values({
+          companyId: before.companyId,
+          accountId: account.id,
+          type: before.type,
+          description: before.description,
+          categoryId: before.categoryId,
+          counterpart: before.counterpart,
+          amount: r.paid,
+          interest: r.interest,
+          discount: r.discount,
+          dueDate: before.dueDate,
+          paidAt,
+          notes: before.notes,
+          partialOf: before.id,
+          createdBy: user.id,
+        })
+        .returning();
+      const [after] = await tx
+        .update(transactions)
+        .set({ amount: r.remaining, originalAmount: before.originalAmount ?? before.amount, updatedAt: new Date() })
+        .where(eq(transactions.id, id))
+        .returning();
+      await logChange(
+        { user, companyId: before.companyId, action: "baixar_parcial", entity: "lancamento", entityId: `${part.id},${id}`, before, after: { pagamento: part, contaDeOrigem: after } },
+        tx,
+      );
+      return `${word} parcial registrado. Ficam em aberto ${(r.remaining / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`;
+    });
+    revalidatePath("/", "layout");
+    return { ok: done };
+  });
+}
+
 export async function deleteTransaction(fd: FormData) {
   const id = int(fd, "id");
   if (!id) return;
   const before = await loadEditable(id);
   const { user } = await requireCompanyId(before.companyId, "gerir");
   if (before.source !== "manual") return;
+  // Excluir um pagamento parcial é o mesmo que estorná-lo: o valor volta para a conta em aberto.
+  if (before.partialOf && before.paidAt) {
+    await undoSettlement(before, user);
+    revalidatePath("/", "layout");
+    return;
+  }
   const scope = str(fd, "scope");
   // "futuras" exclui esta e as próximas ocorrências pendentes da mesma recorrência.
   const rows =
@@ -148,6 +314,10 @@ export async function deleteTransaction(fd: FormData) {
   const now = new Date();
   for (const r of rows) {
     await db.update(transactions).set({ deletedAt: now }).where(eq(transactions.id, r.id));
+  }
+  // Encerrar uma conta fixa sem fim: para de gerar os próximos meses.
+  if (scope === "futuras" && before.recurrenceGroup && before.openEnded) {
+    await db.update(transactions).set({ openEnded: false }).where(eq(transactions.recurrenceGroup, before.recurrenceGroup));
   }
   await logChange({
     user,

@@ -1,5 +1,6 @@
 import { setPaid } from "@/app/actions/lancamentos";
 import { formatMoney, today } from "@/lib/format";
+import { SettleButton } from "./SettleButton";
 import { addDays } from "@/lib/format";
 
 const MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
@@ -29,10 +30,26 @@ type Item = {
   description: string;
   counterpart: string | null;
   source: "manual" | "chserver";
+  accountId: number;
+  originalAmount: number | null;
+  transferId?: string | null;
 };
 
 /** Linha de conta pendente no estilo do protótipo: caixinha de data, descrição, situação e valor. */
-export function DueItem({ item, companyName, companyColor, canPay }: { item: Item; companyName?: string; companyColor?: string; canPay: boolean }) {
+export function DueItem({
+  item,
+  companyName,
+  companyColor,
+  canPay,
+  accounts,
+}: {
+  item: Item;
+  companyName?: string;
+  companyColor?: string;
+  canPay: boolean;
+  /** Contas da empresa do item, para escolher de onde saiu/entrou o dinheiro na baixa. */
+  accounts: { id: number; name: string }[];
+}) {
   const [label, tone] = dueStatus(item.dueDate);
   return (
     <div className="li">
@@ -52,6 +69,11 @@ export function DueItem({ item, companyName, companyColor, canPay }: { item: Ite
             </span>
           )}
           {item.counterpart}
+          {item.originalAmount !== null && (
+            <span className="small muted" style={{ marginLeft: 8 }}>
+              restante de {formatMoney(item.originalAmount)}
+            </span>
+          )}
         </div>
       </div>
       <div className="li-r">
@@ -61,14 +83,18 @@ export function DueItem({ item, companyName, companyColor, canPay }: { item: Ite
         </b>
         <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
           <span className={`badge ${tone}`}>{label}</span>
-          {canPay && (
-            <form action={setPaid}>
-              <input type="hidden" name="id" value={item.id} />
-              <button className="btn sm" type="submit" title="Marcar como pago/recebido hoje">
-                {item.type === "entrada" ? "Receber" : "Pagar"}
-              </button>
-            </form>
-          )}
+          {canPay &&
+            (item.transferId ? (
+              // Transferência entre empresas: os dois lados são baixados juntos, sem juros nem parcial.
+              <form action={setPaid}>
+                <input type="hidden" name="id" value={item.id} />
+                <button className="btn sm" type="submit" title="Marcar a transferência como feita hoje">
+                  Baixar
+                </button>
+              </form>
+            ) : (
+              <SettleButton item={item} accounts={accounts} today={today()} />
+            ))}
         </span>
       </div>
     </div>

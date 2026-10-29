@@ -3,6 +3,7 @@ import { PageHead } from "@/components/PageHead";
 import { deleteTransaction, setPaid } from "@/app/actions/lancamentos";
 import { ConfirmButton } from "@/components/FormStatus";
 import { Money } from "@/components/Money";
+import { SettleButton } from "@/components/SettleButton";
 import { requireCompany } from "@/lib/access";
 import { formatDate, formatMoney, monthEnd, today } from "@/lib/format";
 import { param, type SearchParams } from "@/lib/page";
@@ -136,7 +137,13 @@ export default async function LancamentosPage({ params, searchParams }: { params
                         {tx.description}
                       </Link>
                       {tx.counterpart && <div className="small muted">{tx.counterpart}</div>}
-                      {tx.recurrenceGroup && <span className="badge">recorrente</span>}{" "}
+                      {tx.recurrence === "parcelada" ? (
+                        <span className="badge">parcelada</span>
+                      ) : tx.recurrenceGroup ? (
+                        <span className="badge">{tx.openEnded ? "fixa mensal" : "recorrente"}</span>
+                      ) : null}{" "}
+                      {tx.partialOf && <span className="badge amber">pagamento parcial</span>}{" "}
+                      {tx.originalAmount !== null && !tx.paidAt && <span className="badge amber">restante de {formatMoney(tx.originalAmount)}</span>}{" "}
                       {tx.transferId && <span className="badge">entre empresas</span>}{" "}
                       {!manual && <span className="badge blue">CHServer</span>}
                     </td>
@@ -156,7 +163,15 @@ export default async function LancamentosPage({ params, searchParams }: { params
                     </td>
                     <td>
                       <div className="row-actions">
-                        {canLaunch && manual && (
+                        {canLaunch && manual && !tx.paidAt && !tx.transferId && (
+                          <SettleButton
+                            item={tx}
+                            accounts={accounts.filter((a) => a.active || a.id === tx.accountId)}
+                            today={d0}
+                            label={tx.type === "entrada" ? "Receber" : "Pagar"}
+                          />
+                        )}
+                        {canLaunch && manual && (tx.paidAt || tx.transferId) && (
                           <form action={setPaid}>
                             <input type="hidden" name="id" value={tx.id} />
                             {tx.paidAt ? (
@@ -183,8 +198,14 @@ export default async function LancamentosPage({ params, searchParams }: { params
                           <form action={deleteTransaction}>
                             <input type="hidden" name="id" value={tx.id} />
                             <input type="hidden" name="scope" value="futuras" />
-                            <ConfirmButton message="Excluir este e os próximos lançamentos pendentes desta recorrência?">
-                              Excluir próximos
+                            <ConfirmButton
+                              message={
+                                tx.openEnded
+                                  ? "Encerrar esta conta fixa? Este e os próximos meses em aberto serão excluídos e o sistema para de gerar novos."
+                                  : "Excluir este e os próximos lançamentos pendentes desta recorrência?"
+                              }
+                            >
+                              {tx.openEnded ? "Encerrar conta fixa" : "Excluir próximos"}
                             </ConfirmButton>
                           </form>
                         )}

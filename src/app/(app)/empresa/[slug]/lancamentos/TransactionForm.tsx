@@ -19,6 +19,8 @@ export type TxInitial = {
   categoryId?: number | null;
   counterpart: string;
   notes: string;
+  recurrence?: string | null;
+  openEnded?: boolean;
 };
 
 export function TransactionForm({
@@ -27,15 +29,19 @@ export function TransactionForm({
   categories,
   initial,
   today,
+  categoriesHref,
 }: {
   companyId: number;
   accounts: Opt[];
   categories: Cat[];
   initial: TxInitial;
   today: string;
+  /** Onde criar novas categorias (Ajustes da empresa), se a pessoa puder. */
+  categoriesHref?: string;
 }) {
   const [type, setType] = useState(initial.type);
   const [paid, setPaid] = useState(initial.paidAt !== null);
+  const [mode, setMode] = useState<"unica" | "mensal" | "parcelada">("unica");
   const isNew = !initial.id;
   return (
     <ActionForm action={saveTransaction} className="form card" resetOnSuccess={isNew}>
@@ -73,11 +79,19 @@ export function TransactionForm({
           </select>
         </label>
         <label>
-          Categoria
+          <span>
+            Categoria
+            {categoriesHref && (
+              <a href={categoriesHref} className="small" style={{ marginLeft: 8, fontWeight: 400 }}>
+                criar nova
+              </a>
+            )}
+          </span>
           <select name="categoryId" defaultValue={initial.categoryId ?? ""} key={type}>
             <option value="">Sem categoria</option>
             {categories
               .filter((c) => c.type === type)
+              .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
               .map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -101,20 +115,69 @@ export function TransactionForm({
             <input name="paidAt" type="date" defaultValue={initial.paidAt ?? today} />
           </label>
         )}
-        {isNew && (
+      </div>
+      {isNew && (
+        <fieldset className="fields" style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 12 }}>
+          <legend className="small" style={{ padding: "0 6px" }}>
+            Esta conta é
+          </legend>
           <label>
-            Repetir todo mês
-            <select name="repeat" defaultValue="1">
-              <option value="1">Não repetir</option>
-              {[2, 3, 6, 12, 24, 36].map((n) => (
-                <option key={n} value={n}>
-                  {n} meses
-                </option>
-              ))}
+            Tipo de conta
+            <select name="mode" value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
+              <option value="unica">Única (só esta vez)</option>
+              <option value="mensal">Fixa todo mês</option>
+              <option value="parcelada">Parcelada</option>
             </select>
           </label>
-        )}
-      </div>
+          {mode === "mensal" && (
+            <label>
+              Por quanto tempo
+              <select name="months" defaultValue="sem_fim">
+                <option value="sem_fim">Sem data de fim</option>
+                {[3, 6, 12, 24, 36].map((n) => (
+                  <option key={n} value={n}>
+                    {n} meses
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {mode === "parcelada" && (
+            <>
+              <label>
+                Número de parcelas
+                <input name="installments" type="number" min={2} max={72} defaultValue={2} required />
+              </label>
+              <label>
+                O valor informado é
+                <select name="amountIs" defaultValue="total">
+                  <option value="total">O total (divide nas parcelas)</option>
+                  <option value="parcela">O de cada parcela</option>
+                </select>
+              </label>
+            </>
+          )}
+          {mode !== "unica" && (
+            <p className="help" style={{ gridColumn: "1 / -1", margin: 0 }}>
+              O vencimento informado é o da primeira; as próximas vencem no mesmo dia dos meses seguintes
+              {mode === "parcelada"
+                ? " e ganham “(1/N)” na descrição."
+                : ". Sem data de fim, o sistema mantém sempre os próximos 12 meses lançados. Para mudar o valor de um mês só, ou desse mês em diante, edite a conta."}
+            </p>
+          )}
+        </fieldset>
+      )}
+      {!isNew && initial.recurrence && (
+        <div className="fields">
+          <label>
+            Aplicar a alteração em
+            <select name="scope" defaultValue="esta">
+              <option value="esta">Só esta</option>
+              <option value="proximas">Esta e as próximas em aberto</option>
+            </select>
+          </label>
+        </div>
+      )}
       <label>
         Observações
         <textarea name="notes" defaultValue={initial.notes} maxLength={1000} />

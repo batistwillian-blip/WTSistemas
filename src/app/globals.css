@@ -295,3 +295,8 @@ details.box[open] summary { margin-bottom: 12px; }
 .wbar .pos-bar { background: color-mix(in srgb, var(--in) 55%, transparent); }
 .wbar .neg-bar { background: color-mix(in srgb, var(--out) 60%, transparent); }
 @media (max-width: 900px) { .insight { grid-template-columns: 1fr; } }
+
+/* Janela de baixa (pagar/receber) */
+.dialog { text-align: left; border: 1px solid var(--line); border-radius: 12px; padding: 20px; width: min(560px, calc(100vw - 32px)); background: var(--surface); color: var(--ink); box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25); }
+.dialog::backdrop { background: rgba(10, 12, 20, 0.45); }
+.dialog .form { gap: 14px; }

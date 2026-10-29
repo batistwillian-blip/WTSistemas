@@ -2,7 +2,8 @@ import Link from "next/link";
 import type { CompanyWithRole } from "@/lib/access";
 import { addDays, formatDate, formatMoney, today } from "@/lib/format";
 import type { Period } from "@/lib/period";
-import { paidBills, pendingItems } from "@/lib/queries";
+import { setPaid } from "@/app/actions/lancamentos";
+import { getAccounts, paidBills, pendingItems } from "@/lib/queries";
 import { roleAllows } from "@/lib/roles";
 import { DueItem } from "./DueItem";
 import { PeriodFilter } from "./PeriodFilter";
@@ -74,6 +75,7 @@ export async function BillsView({
                   {consolidated && <th>Empresa</th>}
                   <th>Conta</th>
                   <th className="num">Valor</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
@@ -93,10 +95,35 @@ export async function BillsView({
                           CHServer
                         </span>
                       ) : null}
+                      {t.partialOf && (
+                        <span className="badge amber" style={{ marginLeft: 6 }}>
+                          parcial
+                        </span>
+                      )}
                     </td>
                     {consolidated && <td className="small">{byId.get(t.companyId)?.name}</td>}
                     <td className="small">{t.offBalance ? "—" : t.accountName}</td>
-                    <td className="num">{formatMoney(t.amount)}</td>
+                    <td className="num">
+                      {formatMoney(t.amount)}
+                      {(t.interest > 0 || t.discount > 0) && (
+                        <div className="small muted">
+                          {t.interest > 0 && `juros ${formatMoney(t.interest)}`}
+                          {t.interest > 0 && t.discount > 0 && " · "}
+                          {t.discount > 0 && `desc. ${formatMoney(t.discount)}`}
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      {t.source === "manual" && !t.offBalance && roleAllows(byId.get(t.companyId)?.role ?? "leitura", "lancar") && !t.parentPaid && (
+                        <form action={setPaid}>
+                          <input type="hidden" name="id" value={t.id} />
+                          <input type="hidden" name="undo" value="1" />
+                          <button className="btn sm" type="submit" title="Desfazer a baixa: a conta volta a ficar em aberto">
+                            Estornar
+                          </button>
+                        </form>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -107,7 +134,7 @@ export async function BillsView({
     );
   }
 
-  const all = await pendingItems(ids, addDays(d0, 365 * 5));
+  const [all, accs] = await Promise.all([pendingItems(ids, addDays(d0, 365 * 5)), getAccounts(ids)]);
   const list = all.filter((p) => p.type === type && !(consolidated && p.transferId));
   const sum = (l: typeof list) => l.reduce((s, p) => s + p.amount, 0);
   const groups: [string, typeof list][] = [
@@ -161,6 +188,7 @@ export async function BillsView({
                       companyName={consolidated ? c.name : undefined}
                       companyColor={c.color}
                       canPay={roleAllows(c.role, "lancar") && p.source === "manual"}
+                      accounts={accs.filter((a) => a.companyId === p.companyId && (a.active || a.id === p.accountId))}
                     />
                   );
                 })}

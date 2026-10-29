@@ -1,4 +1,5 @@
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   date,
@@ -153,6 +154,16 @@ export const transactions = pgTable(
     deletedAt: timestamp("excluido_em", { withTimezone: true }),
     // Importado do CH só para consulta (ex.: contas já pagas): fica no filtro "Pagos", mas não entra no saldo, nos totais nem nos lançamentos.
     offBalance: boolean("fora_do_saldo").notNull().default(false),
+    // Baixa: o valor (amount) passa a ser o efetivamente pago = principal + juros − desconto.
+    interest: cents("juros").notNull().default(0),
+    discount: cents("desconto").notNull().default(0),
+    // Valor de face da conta antes do primeiro pagamento parcial (só informativo).
+    originalAmount: cents("valor_original"),
+    // Pagamento parcial: a parte paga vira um lançamento próprio que aponta para a conta de origem.
+    partialOf: integer("parcial_de").references((): AnyPgColumn => transactions.id),
+    // "mensal" (conta fixa) ou "parcelada"; sem_fim = conta fixa que o sistema estende sozinho mês a mês.
+    recurrence: text("recorrencia"),
+    openEnded: boolean("sem_fim").notNull().default(false),
   },
   (t) => [
     index("lancamentos_empresa_venc_idx").on(t.companyId, t.dueDate),

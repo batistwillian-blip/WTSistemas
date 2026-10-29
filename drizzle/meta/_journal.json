@@ -57,6 +57,13 @@
       "when": 1793138281134,
       "tag": "0007_codigos_recuperacao",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793287371133,
+      "tag": "0008_baixa_e_recorrencia",
+      "breakpoints": true
     }
   ]
 }

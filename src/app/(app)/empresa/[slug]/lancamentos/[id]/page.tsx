@@ -27,6 +27,7 @@ export default async function EditarLancamentoPage({ params }: { params: Promise
           accounts={accounts.filter((a) => a.active || a.id === tx.accountId)}
           categories={categories.filter((c) => c.active || c.id === tx.categoryId)}
           today={today()}
+          categoriesHref={roleAllows(role, "gerir") ? `/empresa/${slug}/ajustes` : undefined}
           initial={{
             id: tx.id,
             type: tx.type,
@@ -38,6 +39,8 @@ export default async function EditarLancamentoPage({ params }: { params: Promise
             categoryId: tx.categoryId,
             counterpart: tx.counterpart ?? "",
             notes: tx.notes ?? "",
+            recurrence: tx.recurrenceGroup ? (tx.recurrence ?? "mensal") : null,
+            openEnded: tx.openEnded,
           }}
         />
       ) : (

@@ -306,6 +306,7 @@ export async function Overview({ companies, consolidated }: { companies: Company
                   companyName={consolidated ? c.name : undefined}
                   companyColor={c.color}
                   canPay={roleAllows(c.role, "lancar") && p.source === "manual"}
+                  accounts={balances.filter((a) => a.companyId === p.companyId && (a.active || a.id === p.accountId))}
                 />
               );
             })}
