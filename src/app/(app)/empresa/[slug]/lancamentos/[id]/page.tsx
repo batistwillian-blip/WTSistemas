@@ -5,6 +5,7 @@ import { requireCompany } from "@/lib/access";
 import { formatDate, today } from "@/lib/format";
 import { getAccounts, getCategories, getTransaction } from "@/lib/queries";
 import { roleAllows } from "@/lib/roles";
+import { installmentLabel } from "@/lib/billing";
 import { TransactionForm } from "../TransactionForm";
 
 export default async function EditarLancamentoPage({ params }: { params: Promise<{ slug: string; id: string }> }) {
@@ -16,7 +17,7 @@ export default async function EditarLancamentoPage({ params }: { params: Promise
   const [accounts, categories] = await Promise.all([getAccounts([company.id]), getCategories(company.id)]);
   return (
     <div className="stack">
-      <PageHead context={company.name} color={company.color} title={editable ? "Editar lançamento" : "Lançamento"} subtitle={<Link href={`/empresa/${slug}/lancamentos`}>← Voltar para lançamentos</Link>} />
+      <PageHead context={company.name} color={company.color} title={`${editable ? "Editar lançamento" : "Lançamento"}${tx.installment ? ` · parcela ${installmentLabel(tx)}` : ""}`} subtitle={<Link href={`/empresa/${slug}/lancamentos`}>← Voltar para lançamentos</Link>} />
       {tx.source === "chserver" && (
         <div className="alert info">Importado do CHServer. Alterações devem ser feitas lá; a próxima sincronização atualiza aqui.</div>
       )}
@@ -41,6 +42,10 @@ export default async function EditarLancamentoPage({ params }: { params: Promise
             notes: tx.notes ?? "",
             recurrence: tx.recurrenceGroup ? (tx.recurrence ?? "mensal") : null,
             openEnded: tx.openEnded,
+            installment: tx.installment,
+            installments: tx.installments,
+            document: tx.document,
+            competence: tx.competence,
           }}
         />
       ) : (

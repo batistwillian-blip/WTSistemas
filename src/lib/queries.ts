@@ -60,6 +60,9 @@ export async function pendingItems(companyIds: number[], untilDue?: string) {
       source: transactions.source,
       accountId: transactions.accountId,
       originalAmount: transactions.originalAmount,
+      installment: transactions.installment,
+      installments: transactions.installments,
+      document: transactions.document,
     })
     .from(transactions)
     .where(
@@ -133,6 +136,7 @@ export async function listTransactions(companyId: number, f: TxFilters) {
           ? or(
               ilike(transactions.description, `%${escapeLike(q)}%`),
               ilike(transactions.counterpart, `%${escapeLike(q)}%`),
+              ilike(transactions.document, `%${escapeLike(q)}%`),
             )
           : undefined,
       ),
@@ -190,6 +194,9 @@ export async function paidBills(companyIds: number[], type: "entrada" | "saida",
       discount: transactions.discount,
       partialOf: transactions.partialOf,
       transferId: transactions.transferId,
+      installment: transactions.installment,
+      installments: transactions.installments,
+      document: transactions.document,
       // Parcial cuja conta de origem já foi quitada: estorna-se primeiro o pagamento final.
       parentPaid: sql<boolean>`exists (select 1 from lancamentos o where o.id = ${transactions.partialOf} and o.pago_em is not null and o.excluido_em is null)`,
     })

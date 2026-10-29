@@ -3,6 +3,7 @@ import type { CompanyWithRole } from "@/lib/access";
 import { addDays, formatDate, formatMoney, today } from "@/lib/format";
 import type { Period } from "@/lib/period";
 import { setPaid } from "@/app/actions/lancamentos";
+import { installmentLabel } from "@/lib/billing";
 import { getAccounts, paidBills, pendingItems } from "@/lib/queries";
 import { roleAllows } from "@/lib/roles";
 import { DueItem } from "./DueItem";
@@ -95,6 +96,12 @@ export async function BillsView({
                           CHServer
                         </span>
                       ) : null}
+                      {installmentLabel(t) && (
+                        <span className="badge" style={{ marginLeft: 6 }}>
+                          {installmentLabel(t)}
+                        </span>
+                      )}
+                      {t.document && <div className="doc">Doc {t.document}</div>}
                       {t.partialOf && (
                         <span className="badge amber" style={{ marginLeft: 6 }}>
                           parcial

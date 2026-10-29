@@ -2,10 +2,21 @@
 
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import { settleTransaction } from "@/app/actions/lancamentos";
-import { formatMoney, parseMoney } from "@/lib/format";
+import { installmentLabel } from "@/lib/billing";
+import { formatDate, formatMoney, parseMoney } from "@/lib/format";
 import { Feedback } from "./FormStatus";
 
-export type SettleItem = { id: number; type: "entrada" | "saida"; amount: number; description: string; accountId: number };
+export type SettleItem = {
+  id: number;
+  type: "entrada" | "saida";
+  amount: number;
+  description: string;
+  accountId: number;
+  dueDate: string;
+  installment: number | null;
+  installments: number | null;
+  document: string | null;
+};
 
 const toInput = (cents: number) => (cents / 100).toFixed(2).replace(".", ",");
 
@@ -61,8 +72,17 @@ export function SettleButton({
           <input type="hidden" name="id" value={item.id} />
           <div>
             <h2 style={{ margin: 0 }}>{entrada ? "Receber" : "Pagar"} conta</h2>
-            <p className="muted small" style={{ margin: "4px 0 0" }}>
-              {item.description} · em aberto <b className="num">{formatMoney(item.amount)}</b>
+            <p style={{ margin: "6px 0 0" }}>
+              <b>{item.description}</b>
+              {installmentLabel(item) && (
+                <span className="badge" style={{ marginLeft: 6 }}>
+                  parcela {installmentLabel(item)}
+                </span>
+              )}
+            </p>
+            <p className="muted small" style={{ margin: "2px 0 0" }}>
+              {item.document && <>Doc {item.document} · </>}
+              vence {formatDate(item.dueDate)} · em aberto <b className="num">{formatMoney(item.amount)}</b>
             </p>
           </div>
           <div className="fields">

@@ -7,7 +7,8 @@ import { db } from "@/db";
 import { accounts, categories, transactions } from "@/db/schema";
 import { requireCompanyId } from "@/lib/access";
 import { logChange } from "@/lib/audit";
-import { planSeries, settle, OPEN_ENDED_MONTHS, type SeriesMode } from "@/lib/billing";
+import { competenceOf, planSeries, settle, OPEN_ENDED_MONTHS, SYSTEM_DOC, type SeriesMode } from "@/lib/billing";
+import { nextDocument } from "@/lib/documents";
 import { today } from "@/lib/format";
 import { guard, int, isoDate, money, optStr, str, UserError, type ActionState } from "@/lib/form";
 
@@ -36,8 +37,8 @@ export async function saveTransaction(_prev: ActionState, fd: FormData): Promise
     if (amount === null || amount <= 0) throw new UserError("Informe um valor maior que zero.");
     const dueDate = isoDate(fd, "dueDate");
     if (!dueDate) throw new UserError("Informe a data de vencimento.");
-    const paid = fd.get("paid") === "on";
-    const paidAt = paid ? (isoDate(fd, "paidAt") ?? today()) : null;
+    // Data de pagamento preenchida = já pago; em branco = em aberto.
+    const paidAt = isoDate(fd, "paidAt") ?? (fd.get("paid") === "on" ? today() : null);
 
     const accountId = int(fd, "accountId");
     const [account] = accountId
@@ -54,11 +55,17 @@ export async function saveTransaction(_prev: ActionState, fd: FormData): Promise
       if (!cat) throw new UserError("Categoria inválida.");
     }
 
+    // Competência: mês informado ou, sem ele, o mês do vencimento.
+    const competence = competenceOf(str(fd, "competence", 10)) ?? competenceOf(dueDate)!;
+    // Nº do documento: vazio = automático; o formato A00000 é reservado à numeração do sistema.
+    const typedDoc = str(fd, "document", 60);
+
     const values = {
       type: type as "entrada" | "saida",
       description,
       amount,
       dueDate,
+      competence,
       paidAt,
       accountId: account.id,
       categoryId: categoryId ?? null,
@@ -70,9 +77,13 @@ export async function saveTransaction(_prev: ActionState, fd: FormData): Promise
       const before = await loadEditable(id);
       if (before.companyId !== companyId) throw new UserError("Lançamento não pertence a esta empresa.");
       if (before.source !== "manual") throw new UserError("Lançamentos importados do sistema de vendas não podem ser editados aqui.");
+      if (SYSTEM_DOC.test(typedDoc.toUpperCase()) && typedDoc.toUpperCase() !== before.document) {
+        throw new UserError("Números no formato A00000 são da numeração automática. Deixe em branco ou informe o nº da nota/pedido.");
+      }
+      const document = typedDoc ? (SYSTEM_DOC.test(typedDoc.toUpperCase()) ? typedDoc.toUpperCase() : typedDoc) : (before.document ?? (await nextDocument(companyId)));
       const [after] = await db
         .update(transactions)
-        .set({ ...values, updatedAt: new Date() })
+        .set({ ...values, document, updatedAt: new Date() })
         .where(eq(transactions.id, id))
         .returning();
       await logChange({ user, companyId, action: "editar", entity: "lancamento", entityId: id, before, after });
@@ -86,7 +97,7 @@ export async function saveTransaction(_prev: ActionState, fd: FormData): Promise
             categoryId: values.categoryId,
             counterpart: values.counterpart,
             // Na parcelada cada uma tem o seu "(k/N)"; na fixa a descrição acompanha.
-            ...(before.recurrence === "parcelada" ? {} : { description: values.description }),
+            description: values.description,
             updatedAt: new Date(),
           })
           .where(
@@ -120,7 +131,11 @@ export async function saveTransaction(_prev: ActionState, fd: FormData): Promise
             : 1;
       const amountIsTotal = str(fd, "amountIs") !== "parcela";
       if (mode === "parcelada" && amountIsTotal && amount < count) throw new UserError("Valor pequeno demais para dividir nessas parcelas.");
-      const plan = planSeries({ mode, amount, dueDate, description, count, amountIsTotal });
+      if (SYSTEM_DOC.test(typedDoc.toUpperCase())) {
+        throw new UserError("Números no formato A00000 são da numeração automática. Deixe em branco ou informe o nº da nota/pedido.");
+      }
+      const document = typedDoc || (await nextDocument(companyId));
+      const plan = planSeries({ mode, amount, dueDate, competence, count, amountIsTotal, openEnded });
       const group = plan.length > 1 ? randomUUID() : null;
       const rows = plan.map((p, i) => ({
         ...values,
@@ -131,6 +146,7 @@ export async function saveTransaction(_prev: ActionState, fd: FormData): Promise
         recurrenceGroup: group,
         recurrence: group ? mode : null,
         openEnded,
+        document,
         createdBy: user.id,
       }));
       const repeat = rows.length;
@@ -270,6 +286,10 @@ export async function settleTransaction(_prev: ActionState, fd: FormData): Promi
           paidAt,
           notes: before.notes,
           partialOf: before.id,
+          document: before.document,
+          installment: before.installment,
+          installments: before.installments,
+          competence: before.competence,
           createdBy: user.id,
         })
         .returning();

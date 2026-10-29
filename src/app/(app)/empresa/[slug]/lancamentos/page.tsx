@@ -4,6 +4,7 @@ import { deleteTransaction, setPaid } from "@/app/actions/lancamentos";
 import { ConfirmButton } from "@/components/FormStatus";
 import { Money } from "@/components/Money";
 import { SettleButton } from "@/components/SettleButton";
+import { installmentLabel } from "@/lib/billing";
 import { requireCompany } from "@/lib/access";
 import { formatDate, formatMoney, monthEnd, today } from "@/lib/format";
 import { param, type SearchParams } from "@/lib/page";
@@ -102,7 +103,7 @@ export default async function LancamentosPage({ params, searchParams }: { params
         </label>
         <label style={{ flex: 1 }}>
           Buscar
-          <input name="q" defaultValue={q} placeholder="Descrição ou cliente/fornecedor" />
+          <input name="q" defaultValue={q} placeholder="Descrição, cliente/fornecedor ou nº doc" />
         </label>
         <button className="btn" type="submit">
           Filtrar
@@ -137,11 +138,12 @@ export default async function LancamentosPage({ params, searchParams }: { params
                         {tx.description}
                       </Link>
                       {tx.counterpart && <div className="small muted">{tx.counterpart}</div>}
-                      {tx.recurrence === "parcelada" ? (
-                        <span className="badge">parcelada</span>
-                      ) : tx.recurrenceGroup ? (
-                        <span className="badge">{tx.openEnded ? "fixa mensal" : "recorrente"}</span>
-                      ) : null}{" "}
+                      {tx.recurrenceGroup && (
+                        <span className="badge">
+                          {tx.recurrence === "parcelada" ? "parcela" : tx.openEnded ? "fixa mensal" : "fixa"} {installmentLabel(tx) ?? ""}
+                        </span>
+                      )}{" "}
+                      {tx.document && <span className="doc">Doc {tx.document}</span>}{" "}
                       {tx.partialOf && <span className="badge amber">pagamento parcial</span>}{" "}
                       {tx.originalAmount !== null && !tx.paidAt && <span className="badge amber">restante de {formatMoney(tx.originalAmount)}</span>}{" "}
                       {tx.transferId && <span className="badge">entre empresas</span>}{" "}

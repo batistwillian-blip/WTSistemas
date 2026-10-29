@@ -1,5 +1,6 @@
 import { setPaid } from "@/app/actions/lancamentos";
 import { formatMoney, today } from "@/lib/format";
+import { installmentLabel } from "@/lib/billing";
 import { SettleButton } from "./SettleButton";
 import { addDays } from "@/lib/format";
 
@@ -33,6 +34,9 @@ type Item = {
   accountId: number;
   originalAmount: number | null;
   transferId?: string | null;
+  installment: number | null;
+  installments: number | null;
+  document: string | null;
 };
 
 /** Linha de conta pendente no estilo do protótipo: caixinha de data, descrição, situação e valor. */
@@ -59,7 +63,8 @@ export function DueItem({
       </div>
       <div>
         <div className="t">
-          {item.description} {item.source === "chserver" && <span className="badge blue">Automático</span>}
+          {item.description} {installmentLabel(item) && <span className="badge">parcela {installmentLabel(item)}</span>}{" "}
+          {item.source === "chserver" && <span className="badge blue">Automático</span>}
         </div>
         <div className="m">
           {companyName && (
@@ -68,6 +73,7 @@ export function DueItem({
               {companyName}
             </span>
           )}
+          {item.document && <span className="doc" style={{ marginRight: 8 }}>Doc {item.document}</span>}
           {item.counterpart}
           {item.originalAmount !== null && (
             <span className="small muted" style={{ marginLeft: 8 }}>

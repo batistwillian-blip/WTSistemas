@@ -164,6 +164,13 @@ export const transactions = pgTable(
     // "mensal" (conta fixa) ou "parcelada"; sem_fim = conta fixa que o sistema estende sozinho mês a mês.
     recurrence: text("recorrencia"),
     openEnded: boolean("sem_fim").notNull().default(false),
+    // Nº da parcela (1, 2, 3…) e total de parcelas; conta fixa sem fim tem parcela mas não total.
+    installment: integer("parcela"),
+    installments: integer("parcelas"),
+    // Nº do documento: "A00001" quando gerado pelo sistema (sequência por empresa); outro valor = NF ou pedido informado.
+    document: text("documento"),
+    // Mês de competência (guardado como o dia 1 do mês); sem valor, vale o mês do vencimento.
+    competence: date("competencia"),
   },
   (t) => [
     index("lancamentos_empresa_venc_idx").on(t.companyId, t.dueDate),
@@ -276,3 +283,11 @@ export const recoveryCodes = pgTable(
   },
   (t) => [index("codigos_usuario_idx").on(t.userId)],
 );
+
+/** Última numeração automática de documento (A00001, A00002…) usada em cada empresa. */
+export const documentSequences = pgTable("sequencias_documento", {
+  companyId: integer("empresa_id")
+    .primaryKey()
+    .references(() => companies.id),
+  last: integer("ultimo").notNull().default(0),
+});

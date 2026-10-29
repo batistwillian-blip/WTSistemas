@@ -4,9 +4,12 @@ import { useState } from "react";
 import { saveTransaction } from "@/app/actions/lancamentos";
 import { ActionForm } from "@/components/ActionForm";
 import { Submit } from "@/components/FormStatus";
+import { planSeries, installmentLabel } from "@/lib/billing";
+import { formatDate, formatMoney, parseMoney } from "@/lib/format";
 
 type Opt = { id: number; name: string };
 type Cat = Opt & { type: "entrada" | "saida" };
+type Mode = "unica" | "mensal" | "parcelada";
 
 export type TxInitial = {
   id?: number;
@@ -14,13 +17,17 @@ export type TxInitial = {
   description: string;
   amount: string;
   dueDate: string;
+  competence?: string | null;
   paidAt: string | null;
   accountId?: number;
   categoryId?: number | null;
   counterpart: string;
   notes: string;
+  document?: string | null;
   recurrence?: string | null;
   openEnded?: boolean;
+  installment?: number | null;
+  installments?: number | null;
 };
 
 export function TransactionForm({
@@ -30,6 +37,7 @@ export function TransactionForm({
   initial,
   today,
   categoriesHref,
+  nextDocument,
 }: {
   companyId: number;
   accounts: Opt[];
@@ -38,21 +46,38 @@ export function TransactionForm({
   today: string;
   /** Onde criar novas categorias (Ajustes da empresa), se a pessoa puder. */
   categoriesHref?: string;
+  /** Próximo nº automático, só para mostrar (o definitivo é dado ao salvar). */
+  nextDocument?: string;
 }) {
-  const [type, setType] = useState(initial.type);
-  const [paid, setPaid] = useState(initial.paidAt !== null);
-  const [mode, setMode] = useState<"unica" | "mensal" | "parcelada">("unica");
   const isNew = !initial.id;
+  const [type, setType] = useState(initial.type);
+  const [mode, setMode] = useState<Mode>("unica");
+  const [amount, setAmount] = useState(initial.amount);
+  const [dueDate, setDueDate] = useState(initial.dueDate);
+  const [months, setMonths] = useState("12");
+  const [openEnded, setOpenEnded] = useState(false);
+  const [parts, setParts] = useState("3");
+  const [amountIs, setAmountIs] = useState<"total" | "parcela">("total");
+  const entrada = type === "entrada";
+
+  // Prévia do que será criado, para não ter surpresa ao salvar.
+  const cents = parseMoney(amount) ?? 0;
+  const count = mode === "mensal" ? (openEnded ? 12 : Number(months) || 0) : mode === "parcelada" ? Number(parts) || 0 : 1;
+  const preview =
+    mode !== "unica" && cents > 0 && count >= 2 && dueDate
+      ? planSeries({ mode, amount: cents, dueDate, competence: dueDate.slice(0, 8) + "01", count, amountIsTotal: amountIs === "total", openEnded })
+      : null;
+
   return (
     <ActionForm action={saveTransaction} className="form card" resetOnSuccess={isNew}>
       <input type="hidden" name="companyId" value={companyId} />
       {initial.id && <input type="hidden" name="id" value={initial.id} />}
       <div className="tabs">
         <label className="check">
-          <input type="radio" name="type" value="entrada" checked={type === "entrada"} onChange={() => setType("entrada")} /> Entrada
+          <input type="radio" name="type" value="entrada" checked={entrada} onChange={() => setType("entrada")} /> Entrada (a receber)
         </label>
         <label className="check">
-          <input type="radio" name="type" value="saida" checked={type === "saida"} onChange={() => setType("saida")} /> Saída
+          <input type="radio" name="type" value="saida" checked={!entrada} onChange={() => setType("saida")} /> Saída (a pagar)
         </label>
       </div>
       <div className="fields">
@@ -61,12 +86,23 @@ export function TransactionForm({
           <input name="description" defaultValue={initial.description} maxLength={200} required />
         </label>
         <label>
-          Valor (R$)
-          <input name="amount" defaultValue={initial.amount} inputMode="decimal" placeholder="0,00" required />
+          Nº do documento
+          <input name="document" defaultValue={initial.document ?? ""} maxLength={60} placeholder={nextDocument ? `Automático: ${nextDocument}` : "Automático"} />
         </label>
         <label>
-          Vencimento
-          <input name="dueDate" type="date" defaultValue={initial.dueDate} required />
+          {mode === "parcelada" && amountIs === "total" ? "Valor total (R$)" : mode === "parcelada" ? "Valor da parcela (R$)" : "Valor (R$)"}
+          <input name="amount" value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="0,00" required />
+        </label>
+        <label>
+          {mode === "unica" ? "Vencimento" : "1º vencimento"}
+          <input name="dueDate" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
+        </label>
+        <label>
+          Mês de competência
+          <input name="competence" type="month" defaultValue={(initial.competence ?? "").slice(0, 7)} key={isNew ? dueDate.slice(0, 7) : undefined} />
+          <span className="small muted" style={{ fontWeight: 400 }}>
+            Em branco = mês do vencimento
+          </span>
         </label>
         <label>
           Conta
@@ -100,69 +136,86 @@ export function TransactionForm({
           </select>
         </label>
         <label>
-          {type === "entrada" ? "Cliente" : "Fornecedor"}
+          {entrada ? "Cliente" : "Fornecedor"}
           <input name="counterpart" defaultValue={initial.counterpart} maxLength={150} />
         </label>
-      </div>
-      <div className="fields">
-        <label className="check">
-          <input type="checkbox" name="paid" checked={paid} onChange={(e) => setPaid(e.target.checked)} />
-          {type === "entrada" ? "Já recebido" : "Já pago"}
+        <label>
+          Data de {entrada ? "recebimento" : "pagamento"}
+          <input name="paidAt" type="date" defaultValue={initial.paidAt ?? ""} />
+          <span className="small muted" style={{ fontWeight: 400 }}>
+            Em branco = ainda em aberto
+          </span>
         </label>
-        {paid && (
-          <label>
-            Data do {type === "entrada" ? "recebimento" : "pagamento"}
-            <input name="paidAt" type="date" defaultValue={initial.paidAt ?? today} />
-          </label>
-        )}
       </div>
+
       {isNew && (
-        <fieldset className="fields" style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 12 }}>
-          <legend className="small" style={{ padding: "0 6px" }}>
-            Esta conta é
-          </legend>
-          <label>
-            Tipo de conta
-            <select name="mode" value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
-              <option value="unica">Única (só esta vez)</option>
-              <option value="mensal">Fixa todo mês</option>
-              <option value="parcelada">Parcelada</option>
-            </select>
-          </label>
+        <fieldset className="repeat">
+          <legend>Repetir ou parcelar</legend>
+          <input type="hidden" name="mode" value={mode} />
+          <div className="tabs">
+            {(
+              [
+                ["unica", "Lançamento único"],
+                ["mensal", "Fixa todo mês"],
+                ["parcelada", "Parcelado"],
+              ] as const
+            ).map(([v, l]) => (
+              <label key={v} className="check">
+                <input type="radio" name="_mode" checked={mode === v} onChange={() => setMode(v)} /> {l}
+              </label>
+            ))}
+          </div>
           {mode === "mensal" && (
-            <label>
-              Por quanto tempo
-              <select name="months" defaultValue="sem_fim">
-                <option value="sem_fim">Sem data de fim</option>
-                {[3, 6, 12, 24, 36].map((n) => (
-                  <option key={n} value={n}>
-                    {n} meses
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="fields">
+              <label>
+                Quantos meses
+                <input name="months" type="number" min={2} max={60} value={openEnded ? "" : months} disabled={openEnded} onChange={(e) => setMonths(e.target.value)} />
+              </label>
+              <label className="check" style={{ alignSelf: "end" }}>
+                <input type="checkbox" checked={openEnded} onChange={(e) => setOpenEnded(e.target.checked)} />
+                Sem data de fim (o sistema mantém sempre 12 meses à frente)
+              </label>
+              {openEnded && <input type="hidden" name="months" value="sem_fim" />}
+            </div>
           )}
           {mode === "parcelada" && (
-            <>
+            <div className="fields">
               <label>
-                Número de parcelas
-                <input name="installments" type="number" min={2} max={72} defaultValue={2} required />
+                Nº de parcelas
+                <input name="installments" type="number" min={2} max={72} value={parts} onChange={(e) => setParts(e.target.value)} required />
               </label>
               <label>
                 O valor informado é
-                <select name="amountIs" defaultValue="total">
+                <select name="amountIs" value={amountIs} onChange={(e) => setAmountIs(e.target.value as "total" | "parcela")}>
                   <option value="total">O total (divide nas parcelas)</option>
                   <option value="parcela">O de cada parcela</option>
                 </select>
               </label>
-            </>
+            </div>
           )}
           {mode !== "unica" && (
-            <p className="help" style={{ gridColumn: "1 / -1", margin: 0 }}>
-              O vencimento informado é o da primeira; as próximas vencem no mesmo dia dos meses seguintes
-              {mode === "parcelada"
-                ? " e ganham “(1/N)” na descrição."
-                : ". Sem data de fim, o sistema mantém sempre os próximos 12 meses lançados. Para mudar o valor de um mês só, ou desse mês em diante, edite a conta."}
+            <p className="help" style={{ margin: 0 }}>
+              {preview ? (
+                <>
+                  Serão criadas <b>{preview.length}</b> contas
+                  {mode === "parcelada" ? (
+                    <>
+                      {" "}
+                      ({installmentLabel(preview[0])} a {installmentLabel(preview[preview.length - 1])}) de <b className="num">{formatMoney(preview[preview.length - 1].amount)}</b>
+                      {preview[0].amount !== preview[preview.length - 1].amount && <> (a 1ª de {formatMoney(preview[0].amount)})</>}
+                    </>
+                  ) : (
+                    <>
+                      {" "}
+                      de <b className="num">{formatMoney(cents)}</b>
+                    </>
+                  )}
+                  , de {formatDate(preview[0].dueDate)} a {formatDate(preview[preview.length - 1].dueDate)}
+                  {openEnded ? ", e o sistema segue criando os próximos meses sozinho." : "."} Todas com o mesmo nº de documento.
+                </>
+              ) : (
+                "Informe o valor e o 1º vencimento para ver as parcelas."
+              )}
             </p>
           )}
         </fieldset>
@@ -172,7 +225,7 @@ export function TransactionForm({
           <label>
             Aplicar a alteração em
             <select name="scope" defaultValue="esta">
-              <option value="esta">Só esta</option>
+              <option value="esta">Só esta{initial.installment ? ` (${installmentLabel({ installment: initial.installment, installments: initial.installments ?? null })})` : ""}</option>
               <option value="proximas">Esta e as próximas em aberto</option>
             </select>
           </label>

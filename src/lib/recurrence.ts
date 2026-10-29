@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { transactions } from "@/db/schema";
 import { logChange } from "./audit";
-import { addMonths, today } from "./format";
+import { addMonths, monthStart, today } from "./format";
 import { missingMonths, OPEN_ENDED_MONTHS } from "./billing";
 
 /**
@@ -45,8 +45,12 @@ export async function extendOpenEnded(companyIds: number[]) {
         .orderBy(desc(transactions.dueDate))
         .limit(1);
       if (!model || !model.openEnded) continue;
+      const [{ n }] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(transactions)
+        .where(and(eq(transactions.recurrenceGroup, g.group), isNull(transactions.partialOf)));
       const created = await tx.insert(transactions).values(
-        dates.map((dueDate) => ({
+        dates.map((dueDate, i) => ({
           companyId: model.companyId,
           accountId: model.accountId,
           type: model.type,
@@ -55,6 +59,9 @@ export async function extendOpenEnded(companyIds: number[]) {
           counterpart: model.counterpart,
           amount: model.originalAmount ?? model.amount - model.interest + model.discount,
           dueDate,
+          competence: monthStart(dueDate),
+          installment: n + i + 1,
+          document: model.document,
           notes: model.notes,
           recurrenceGroup: model.recurrenceGroup,
           recurrence: model.recurrence,

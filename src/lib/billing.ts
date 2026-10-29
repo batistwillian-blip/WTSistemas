@@ -13,25 +13,49 @@ export function splitInstallments(total: number, n: number): number[] {
 }
 
 /**
- * Ocorrências de uma conta nova: única, fixa mensal (mesmo valor todo mês) ou parcelada ("Descrição (1/N)").
+ * Ocorrências de uma conta nova: única, fixa mensal (mesmo valor todo mês) ou parcelada.
+ * Cada uma leva o nº da parcela e o total (sem total na fixa sem fim) e a competência anda junto com o vencimento.
  * Na parcelada, `amountIsTotal` diz se o valor informado é o total (dividido) ou o de cada parcela.
  */
 export function planSeries(opts: {
   mode: SeriesMode;
   amount: number;
   dueDate: string;
-  description: string;
+  competence: string;
   count: number;
   amountIsTotal?: boolean;
-}): { dueDate: string; amount: number; description: string }[] {
-  const { mode, amount, dueDate, description } = opts;
-  if (mode === "unica" || opts.count <= 1) return [{ dueDate, amount, description }];
+  openEnded?: boolean;
+}): { dueDate: string; competence: string; amount: number; installment: number | null; installments: number | null }[] {
+  const { mode, amount, dueDate, competence } = opts;
+  if (mode === "unica" || opts.count <= 1) return [{ dueDate, competence, amount, installment: null, installments: null }];
   const n = opts.count;
-  if (mode === "mensal") {
-    return Array.from({ length: n }, (_, i) => ({ dueDate: addMonths(dueDate, i), amount, description }));
-  }
-  const values = opts.amountIsTotal ? splitInstallments(amount, n) : Array.from({ length: n }, () => amount);
-  return values.map((v, i) => ({ dueDate: addMonths(dueDate, i), amount: v, description: `${description} (${i + 1}/${n})` }));
+  const values = mode === "parcelada" && opts.amountIsTotal ? splitInstallments(amount, n) : Array.from({ length: n }, () => amount);
+  return values.map((v, i) => ({
+    dueDate: addMonths(dueDate, i),
+    competence: addMonths(competence, i),
+    amount: v,
+    installment: i + 1,
+    installments: opts.openEnded ? null : n,
+  }));
+}
+
+/** "2/3" para parcelas, "5ª" para conta fixa sem fim, nada para conta única. */
+export function installmentLabel(t: { installment: number | null; installments: number | null }): string | null {
+  if (!t.installment) return null;
+  return t.installments ? `${t.installment}/${t.installments}` : `${t.installment}ª`;
+}
+
+/** Numeração automática do sistema: letra A + 5 dígitos. Qualquer outro formato é documento externo (NF, pedido). */
+export const SYSTEM_DOC = /^A\d{5,}$/;
+
+export function systemDocument(n: number): string {
+  return "A" + String(n).padStart(5, "0");
+}
+
+/** "2026-10" ou "2026-10-15" → "2026-10-01"; inválido → null. */
+export function competenceOf(input: string): string | null {
+  const m = /^(\d{4})-(0[1-9]|1[0-2])/.exec(input);
+  return m ? `${m[1]}-${m[2]}-01` : null;
 }
 
 export type Settlement =
