@@ -1,4 +1,4 @@
-import { addMonths } from "./format";
+import { addDays, addMonths, isValidIsoDate, parseMoney } from "./format";
 
 export type SeriesMode = "unica" | "mensal" | "parcelada";
 
@@ -25,18 +25,55 @@ export function planSeries(opts: {
   count: number;
   amountIsTotal?: boolean;
   openEnded?: boolean;
+  /** Dias entre as parcelas; vazio = todo mês no mesmo dia. */
+  everyDays?: number | null;
 }): { dueDate: string; competence: string; amount: number; installment: number | null; installments: number | null }[] {
   const { mode, amount, dueDate, competence } = opts;
   if (mode === "unica" || opts.count <= 1) return [{ dueDate, competence, amount, installment: null, installments: null }];
   const n = opts.count;
   const values = mode === "parcelada" && opts.amountIsTotal ? splitInstallments(amount, n) : Array.from({ length: n }, () => amount);
-  return values.map((v, i) => ({
-    dueDate: addMonths(dueDate, i),
-    competence: addMonths(competence, i),
-    amount: v,
-    installment: i + 1,
-    installments: opts.openEnded ? null : n,
-  }));
+  return values.map((v, i) => {
+    const due = opts.everyDays ? addDays(dueDate, opts.everyDays * i) : addMonths(dueDate, i);
+    return {
+      dueDate: due,
+      competence: shiftCompetence(competence, dueDate, due),
+      amount: v,
+      installment: i + 1,
+      installments: opts.openEnded ? null : n,
+    };
+  });
+}
+
+/** A competência anda o mesmo número de meses que o vencimento andou desde a 1ª parcela. */
+export function shiftCompetence(baseCompetence: string, firstDue: string, due: string): string {
+  const months = (Number(due.slice(0, 4)) - Number(firstDue.slice(0, 4))) * 12 + Number(due.slice(5, 7)) - Number(firstDue.slice(5, 7));
+  return addMonths(baseCompetence, months);
+}
+
+export const MAX_INSTALLMENTS = 72;
+
+/**
+ * Plano de parcelas ajustado à mão no formulário (JSON [{dueDate, amount}] com valor em texto "1.234,56").
+ * Devolve as parcelas em centavos ou uma mensagem de erro para a pessoa.
+ */
+export function parsePlan(json: string): { dueDate: string; amount: number }[] | { error: string } {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    return { error: "Plano de parcelas inválido. Recarregue a página e tente de novo." };
+  }
+  if (!Array.isArray(raw) || raw.length < 2 || raw.length > MAX_INSTALLMENTS) return { error: `O plano precisa ter de 2 a ${MAX_INSTALLMENTS} parcelas.` };
+  const out: { dueDate: string; amount: number }[] = [];
+  for (const [i, r] of raw.entries()) {
+    const due = typeof r?.dueDate === "string" ? r.dueDate : "";
+    const amount = typeof r?.amount === "string" ? parseMoney(r.amount) : null;
+    if (!isValidIsoDate(due)) return { error: `Parcela ${i + 1}: informe a data de vencimento.` };
+    if (amount === null || amount <= 0) return { error: `Parcela ${i + 1}: informe um valor maior que zero.` };
+    if (amount > 100_000_000_00) return { error: `Parcela ${i + 1}: valor alto demais.` };
+    out.push({ dueDate: due, amount });
+  }
+  return out;
 }
 
 /** "2/3" para parcelas, "5ª" para conta fixa sem fim, nada para conta única. */

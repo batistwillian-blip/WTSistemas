@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { competenceOf, installmentLabel, missingMonths, planSeries, settle, splitInstallments, SYSTEM_DOC, systemDocument } from "@/lib/billing";
+import { competenceOf, installmentLabel, missingMonths, parsePlan, planSeries, settle, splitInstallments, SYSTEM_DOC, systemDocument } from "@/lib/billing";
 
 describe("parcelas", () => {
   it("divide o total e põe a sobra na primeira", () => {
@@ -79,5 +79,22 @@ describe("documento e competência", () => {
     expect(competenceOf("2026-10-17")).toBe("2026-10-01");
     expect(competenceOf("2026-13")).toBeNull();
     expect(competenceOf("")).toBeNull();
+  });
+});
+
+describe("plano de parcelas", () => {
+  it("de 15 em 15 dias, com competência acompanhando o mês", () => {
+    const p = planSeries({ mode: "parcelada", amount: 4000, dueDate: "2026-11-10", competence: "2026-11-01", count: 4, amountIsTotal: true, everyDays: 15 });
+    expect(p.map((x) => x.dueDate)).toEqual(["2026-11-10", "2026-11-25", "2026-12-10", "2026-12-25"]);
+    expect(p.map((x) => x.competence)).toEqual(["2026-11-01", "2026-11-01", "2026-12-01", "2026-12-01"]);
+  });
+
+  it("aceita plano ajustado à mão e recusa parcela sem valor ou data", () => {
+    const ok = parsePlan(JSON.stringify([{ dueDate: "2026-11-10", amount: "1.000,00" }, { dueDate: "2026-12-10", amount: "2500" }]));
+    expect(ok).toEqual([{ dueDate: "2026-11-10", amount: 100000 }, { dueDate: "2026-12-10", amount: 250000 }]);
+    expect(parsePlan(JSON.stringify([{ dueDate: "2026-11-10", amount: "0" }, { dueDate: "2026-12-10", amount: "1" }]))).toEqual({ error: "Parcela 1: informe um valor maior que zero." });
+    expect(parsePlan(JSON.stringify([{ dueDate: "x", amount: "1" }, { dueDate: "2026-12-10", amount: "1" }]))).toHaveProperty("error");
+    expect(parsePlan("[1]")).toHaveProperty("error");
+    expect(parsePlan("nada")).toHaveProperty("error");
   });
 });

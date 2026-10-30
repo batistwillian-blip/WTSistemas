@@ -322,3 +322,13 @@ details.box[open] summary { margin-bottom: 12px; }
 .cb-bar { height: 6px; background: var(--sunk); border-radius: 3px; overflow: hidden; }
 .cb-bar span { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
 @media (max-width: 860px) { .grid.k4.bill-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .bill-cards .kpi .value { font-size: 18px; } .month-nav h2 { min-width: 0; } }
+/* Plano de parcelas editável */
+.plan { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.plan summary { cursor: pointer; font-weight: 600; }
+.plan[open] summary { margin-bottom: 10px; }
+.plan-rows { display: grid; gap: 6px; max-height: 420px; overflow-y: auto; }
+.plan-h, .plan-row { display: grid; grid-template-columns: 64px minmax(130px, 170px) minmax(110px, 150px) auto; gap: 8px; align-items: center; justify-content: start; }
+.plan-h { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--surface); }
+.plan-row.edited input { border-color: var(--accent); }
+.plan-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 13.5px; }
+@media (max-width: 520px) { .plan-h, .plan-row { grid-template-columns: 44px 1fr 1fr; } .plan-row .btn { grid-column: 2 / -1; } .plan-h span:last-child { display: none; } }

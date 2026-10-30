@@ -7,7 +7,7 @@ import { db } from "@/db";
 import { accounts, categories, transactions } from "@/db/schema";
 import { requireCompanyId } from "@/lib/access";
 import { logChange } from "@/lib/audit";
-import { competenceOf, planSeries, settle, OPEN_ENDED_MONTHS, SYSTEM_DOC, type SeriesMode } from "@/lib/billing";
+import { competenceOf, parsePlan, planSeries, settle, shiftCompetence, OPEN_ENDED_MONTHS, SYSTEM_DOC, type SeriesMode } from "@/lib/billing";
 import { nextDocument } from "@/lib/documents";
 import { today } from "@/lib/format";
 import { guard, int, isoDate, money, optStr, str, UserError, type ActionState } from "@/lib/form";
@@ -135,7 +135,22 @@ export async function saveTransaction(_prev: ActionState, fd: FormData): Promise
         throw new UserError("Números no formato A00000 são da numeração automática. Deixe em branco ou informe o nº da nota/pedido.");
       }
       const document = typedDoc || (await nextDocument(companyId));
-      const plan = planSeries({ mode, amount, dueDate, competence, count, amountIsTotal, openEnded });
+      // Intervalo: todo mês no mesmo dia (padrão) ou a cada N dias (15 em 15, semanal...). Conta fixa sem fim é sempre mensal.
+      const everyDays = openEnded ? null : Math.min(Math.max(int(fd, "everyDays") ?? 0, 0), 365) || null;
+      // Plano ajustado à mão (datas e valores de cada parcela) vale sobre o cálculo automático.
+      const customJson = mode !== "unica" && !openEnded ? str(fd, "plan", 20_000) : "";
+      let plan = planSeries({ mode, amount, dueDate, competence, count, amountIsTotal, openEnded, everyDays });
+      if (customJson) {
+        const custom = parsePlan(customJson);
+        if ("error" in custom) throw new UserError(custom.error);
+        plan = custom.map((c, i) => ({
+          dueDate: c.dueDate,
+          amount: c.amount,
+          competence: shiftCompetence(competence, custom[0].dueDate, c.dueDate),
+          installment: i + 1,
+          installments: custom.length,
+        }));
+      }
       const group = plan.length > 1 ? randomUUID() : null;
       const rows = plan.map((p, i) => ({
         ...values,
