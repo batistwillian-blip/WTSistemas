@@ -1,7 +1,6 @@
 import { BillsView } from "@/components/BillsView";
 import { PageHead } from "@/components/PageHead";
-import { consolidatedContext, param, type SearchParams } from "@/lib/page";
-import { readPeriod } from "@/lib/period";
+import { consolidatedContext, type SearchParams } from "@/lib/page";
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const sp = await searchParams;
@@ -13,8 +12,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         companies={companies}
         consolidated
         type="saida"
-        status={param(sp, "situacao") === "pagas" ? "pagas" : "abertas"}
-        period={readPeriod(sp)}
+        searchParams={sp}
         basePath="/consolidado/pagar"
       />
     </>

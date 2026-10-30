@@ -175,6 +175,68 @@ export async function allCompanies() {
   return db.select().from(companies).orderBy(asc(companies.sortOrder), asc(companies.name));
 }
 
+/**
+ * Contas a pagar ou a receber num intervalo, pela data escolhida (vencimento, pagamento ou competência), pagas ou não.
+ * Inclui as pagas do CH só para consulta (marcadas), sem "Vendas do dia" e, no consolidado, sem transferências.
+ */
+export async function billsInRange(
+  companyIds: number[],
+  type: "entrada" | "saida",
+  base: "vencimento" | "pagamento" | "competencia",
+  from: string,
+  to: string,
+  excludeTransfers: boolean,
+) {
+  if (companyIds.length === 0) return [];
+  const col =
+    base === "pagamento"
+      ? transactions.paidAt
+      : base === "competencia"
+        ? sql`coalesce(${transactions.competence}, date_trunc('month', ${transactions.dueDate})::date)`
+        : transactions.dueDate;
+  return db
+    .select({
+      id: transactions.id,
+      companyId: transactions.companyId,
+      type: transactions.type,
+      description: transactions.description,
+      counterpart: transactions.counterpart,
+      amount: transactions.amount,
+      dueDate: transactions.dueDate,
+      paidAt: transactions.paidAt,
+      competence: transactions.competence,
+      source: transactions.source,
+      offBalance: transactions.offBalance,
+      accountId: transactions.accountId,
+      accountName: accounts.name,
+      categoryName: categories.name,
+      externalCategory: transactions.externalCategory,
+      interest: transactions.interest,
+      discount: transactions.discount,
+      originalAmount: transactions.originalAmount,
+      partialOf: transactions.partialOf,
+      transferId: transactions.transferId,
+      installment: transactions.installment,
+      installments: transactions.installments,
+      document: transactions.document,
+      parentPaid: sql<boolean>`exists (select 1 from lancamentos o where o.id = ${transactions.partialOf} and o.pago_em is not null and o.excluido_em is null)`,
+    })
+    .from(transactions)
+    .innerJoin(accounts, eq(accounts.id, transactions.accountId))
+    .leftJoin(categories, eq(categories.id, transactions.categoryId))
+    .where(
+      and(
+        inArray(transactions.companyId, companyIds),
+        isNull(transactions.deletedAt),
+        eq(transactions.type, type),
+        sql`${col} between ${from} and ${to}`,
+        sql`coalesce(${transactions.externalId}, '') not like 'vendas:%'`,
+        excludeTransfers ? isNull(transactions.transferId) : undefined,
+      ),
+    )
+    .orderBy(asc(transactions.dueDate), asc(transactions.id));
+}
+
 /** Contas já pagas/recebidas no período (pela data do pagamento), inclusive as importadas do CH só para consulta. */
 export async function paidBills(companyIds: number[], type: "entrada" | "saida", from: string, to: string, excludeTransfers: boolean) {
   if (companyIds.length === 0) return [];

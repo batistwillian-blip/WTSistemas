@@ -1,8 +1,7 @@
 import { BillsView } from "@/components/BillsView";
 import { PageHead } from "@/components/PageHead";
 import { requireCompany } from "@/lib/access";
-import { param, type SearchParams } from "@/lib/page";
-import { readPeriod } from "@/lib/period";
+import { type SearchParams } from "@/lib/page";
 import { roleAllows } from "@/lib/roles";
 
 export default async function Page({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: SearchParams }) {
@@ -16,8 +15,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         companies={[company]}
         consolidated={false}
         type="saida"
-        status={param(sp, "situacao") === "pagas" ? "pagas" : "abertas"}
-        period={readPeriod(sp)}
+        searchParams={sp}
         basePath={`/empresa/${slug}/pagar`}
       />
     </>
