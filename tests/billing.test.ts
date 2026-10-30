@@ -98,3 +98,27 @@ describe("plano de parcelas", () => {
     expect(parsePlan("nada")).toHaveProperty("error");
   });
 });
+
+describe("previsão por mês e versículo", () => {
+  it("carrega o saldo de um mês para o outro e põe vencidas no mês atual", async () => {
+    const { monthOutlook } = await import("@/lib/finance");
+    const items = [
+      { dueDate: "2026-09-20", type: "saida" as const, amount: 100 },
+      { dueDate: "2026-10-25", type: "entrada" as const, amount: 300 },
+      { dueDate: "2026-11-05", type: "saida" as const, amount: 1000 },
+      { dueDate: "2026-11-20", type: "entrada" as const, amount: 200 },
+    ];
+    const r = monthOutlook(500, items, "2026-10-15", ["2026-10", "2026-11", "2026-12"]);
+    expect(r[0]).toMatchObject({ startBalance: 500, receive: 300, pay: 100, endBalance: 700, target: 0, shortfall: 0 });
+    expect(r[1]).toMatchObject({ startBalance: 700, pay: 1000, endBalance: -100, target: 800, shortfall: 100 });
+    expect(r[2]).toMatchObject({ startBalance: -100, endBalance: -100, shortfall: 100 });
+  });
+
+  it("versículo muda por dia e se repete o dia todo", async () => {
+    const { verseOfDay, VERSES } = await import("@/lib/verses");
+    expect(verseOfDay("2026-10-30")).toEqual(verseOfDay("2026-10-30"));
+    expect(verseOfDay("2026-10-30")).not.toEqual(verseOfDay("2026-10-31"));
+    const seen = new Set(Array.from({ length: VERSES.length }, (_, i) => verseOfDay(`2026-01-${String(1 + (i % 28)).padStart(2, "0")}`).ref));
+    expect(seen.size).toBeGreaterThan(20);
+  });
+});

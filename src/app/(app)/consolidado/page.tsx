@@ -1,13 +1,17 @@
 import { Overview } from "@/components/Overview";
 import { PageHead } from "@/components/PageHead";
-import { consolidatedContext } from "@/lib/page";
+import { consolidatedContext, param, type SearchParams } from "@/lib/page";
 
-export default async function ConsolidadoPage() {
-  const { companies } = await consolidatedContext();
+export default async function ConsolidadoPage({ searchParams }: { searchParams: SearchParams }) {
+  const { user, companies } = await consolidatedContext();
+  const sp = await searchParams;
   return (
-    <>
-      <PageHead context="Consolidado" title="Visão geral" action={{ href: "/consolidado/novo", label: "+ Novo lançamento" }} />
-      <Overview companies={companies} consolidated />
-    </>
+    <Overview
+      companies={companies}
+      consolidated
+      month={param(sp, "mes")}
+      userName={user.name}
+      head={<PageHead context="Consolidado" title="Visão geral" action={{ href: "/consolidado/novo", label: "+ Novo lançamento" }} />}
+    />
   );
 }

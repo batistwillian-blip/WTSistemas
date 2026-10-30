@@ -337,3 +337,19 @@ export const personSequences = pgTable(
   },
   (t) => [primaryKey({ columns: [t.companyId, t.kind] })],
 );
+
+/** Dicas de sazonalidade por empresa e mês (1 a 12), mostradas no painel. Editáveis em Ajustes da empresa. */
+export const seasonalTips = pgTable(
+  "dicas_sazonais",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("empresa_id")
+      .notNull()
+      .references(() => companies.id),
+    month: integer("mes").notNull(),
+    title: text("titulo").notNull(),
+    text: text("texto").notNull(),
+    active: boolean("ativa").notNull().default(true),
+  },
+  (t) => [index("dicas_empresa_mes_idx").on(t.companyId, t.month)],
+);

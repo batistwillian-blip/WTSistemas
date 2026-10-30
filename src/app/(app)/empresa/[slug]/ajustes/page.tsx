@@ -1,4 +1,4 @@
-import { saveAccount, saveCategory, toggleCategory } from "@/app/actions/ajustes";
+import { saveAccount, saveCategory, saveTip, toggleCategory, toggleTip } from "@/app/actions/ajustes";
 import { PageHead } from "@/components/PageHead";
 import { ActionForm } from "@/components/ActionForm";
 import { Submit } from "@/components/FormStatus";
@@ -6,6 +6,23 @@ import { Money } from "@/components/Money";
 import { requireCompany } from "@/lib/access";
 import { accountKindLabels } from "@/lib/labels";
 import { accountBalances, getAccounts, getCategories } from "@/lib/queries";
+import { asc, eq } from "drizzle-orm";
+import { db } from "@/db";
+import { seasonalTips } from "@/db/schema";
+
+const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+function MonthSelect({ value }: { value?: number }) {
+  return (
+    <select name="month" defaultValue={value ?? 1}>
+      {MESES.map((m, i) => (
+        <option key={m} value={i + 1}>
+          {m}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 function KindSelect({ value }: { value?: string }) {
   return (
@@ -22,10 +39,11 @@ function KindSelect({ value }: { value?: string }) {
 export default async function AjustesPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const { company } = await requireCompany(slug, "gerir");
-  const [accounts, balances, categories] = await Promise.all([
+  const [accounts, balances, categories, tips] = await Promise.all([
     getAccounts([company.id]),
     accountBalances([company.id]),
     getCategories(company.id),
+    db.select().from(seasonalTips).where(eq(seasonalTips.companyId, company.id)).orderBy(asc(seasonalTips.month), asc(seasonalTips.id)),
   ]);
   const balanceOf = new Map(balances.map((b) => [b.id, b.balance]));
 
@@ -142,6 +160,67 @@ export default async function AjustesPage({ params }: { params: Promise<{ slug: 
               </select>
             </label>
             <Submit>Adicionar</Submit>
+          </div>
+        </ActionForm>
+      </div>
+
+      <div className="card stack" id="dicas">
+        <div>
+          <h2>Dicas do calendário</h2>
+          <p className="small muted">Aparecem no painel no mês escolhido (e como &quot;prepare-se&quot; no mês anterior). Desative as que não fizerem sentido para a empresa.</p>
+        </div>
+        {tips.map((t) => (
+          <details key={t.id} className="box" style={t.active ? undefined : { opacity: 0.55 }}>
+            <summary>
+              {MESES[t.month - 1]} · {t.title} {!t.active && <span className="badge">desativada</span>}
+            </summary>
+            <ActionForm action={saveTip} className="form">
+              <input type="hidden" name="companyId" value={company.id} />
+              <input type="hidden" name="id" value={t.id} />
+              <div className="filters">
+                <label>
+                  Mês
+                  <MonthSelect value={t.month} />
+                </label>
+                <label style={{ flex: 1 }}>
+                  Título
+                  <input name="title" defaultValue={t.title} maxLength={120} required />
+                </label>
+              </div>
+              <label>
+                Texto
+                <textarea name="text" defaultValue={t.text} maxLength={600} required />
+              </label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Submit>Salvar dica</Submit>
+              </div>
+            </ActionForm>
+            <form action={toggleTip} style={{ marginTop: 8 }}>
+              <input type="hidden" name="id" value={t.id} />
+              <button className="btn sm" type="submit">
+                {t.active ? "Desativar" : "Ativar"}
+              </button>
+            </form>
+          </details>
+        ))}
+        <ActionForm action={saveTip} className="form" resetOnSuccess>
+          <input type="hidden" name="companyId" value={company.id} />
+          <div className="filters">
+            <label>
+              Mês
+              <MonthSelect />
+            </label>
+            <label style={{ flex: 1 }}>
+              Nova dica
+              <input name="title" maxLength={120} required placeholder="Ex.: Feira do bairro, aniversário da cidade" />
+            </label>
+          </div>
+          <label>
+            Texto
+            <textarea name="text" maxLength={600} required />
+          </label>
+          <div>
+            <Submit>Adicionar dica</Submit>
           </div>
         </ActionForm>
       </div>

@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, gte, ilike, inArray, isNull, isNotNull, lte, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { accounts, categories, companies, people, sales, transactions, transfers } from "@/db/schema";
+import { accounts, categories, companies, people, sales, seasonalTips, transactions, transfers } from "@/db/schema";
 import { today } from "./format";
 
 // Lançamentos "fora do saldo" (pagos importados do CH só para consulta) não aparecem em saldo, totais nem listas de lançamentos.
@@ -411,4 +411,38 @@ export async function peopleWithTotals(companyId: number, kind: "cliente" | "for
     .groupBy(people.id)
     .orderBy(sql`lower(${people.name})`);
   return rows.map((r) => ({ ...r, paid: Number(r.paid), open: Number(r.open), overdue: Number(r.overdue) }));
+}
+
+/** Por mês de vencimento: quanto estava lançado para entrar e sair (pago ou não), sem transferências e vendas do dia. */
+export async function launchedByMonth(companyIds: number[], from: string, to: string) {
+  if (companyIds.length === 0) return [];
+  const rows = await db
+    .select({
+      month: sql<string>`to_char(${transactions.dueDate}, 'YYYY-MM')`,
+      inflow: sql<string>`coalesce(sum(${transactions.amount}) filter (where ${transactions.type} = 'entrada'), 0)`,
+      outflow: sql<string>`coalesce(sum(${transactions.amount}) filter (where ${transactions.type} = 'saida'), 0)`,
+    })
+    .from(transactions)
+    .where(
+      and(
+        inArray(transactions.companyId, companyIds),
+        notDeleted,
+        isNull(transactions.transferId),
+        sql`coalesce(${transactions.externalId}, '') not like 'vendas:%'`,
+        gte(transactions.dueDate, from),
+        lte(transactions.dueDate, to),
+      ),
+    )
+    .groupBy(sql`1`);
+  return rows.map((r) => ({ month: r.month, inflow: Number(r.inflow), outflow: Number(r.outflow) }));
+}
+
+/** Dicas de sazonalidade ativas das empresas para um mês (1 a 12). */
+export async function tipsFor(companyIds: number[], month: number) {
+  if (companyIds.length === 0) return [];
+  return db
+    .select()
+    .from(seasonalTips)
+    .where(and(inArray(seasonalTips.companyId, companyIds), eq(seasonalTips.month, month), eq(seasonalTips.active, true)))
+    .orderBy(asc(seasonalTips.companyId), asc(seasonalTips.id));
 }

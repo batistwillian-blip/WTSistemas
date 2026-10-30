@@ -344,3 +344,17 @@ details.box[open] summary { margin-bottom: 12px; }
 .pm-bar span { width: 100%; background: var(--accent); }
 .party-months small { font-size: 10.5px; text-transform: uppercase; }
 @media (max-width: 860px) { .party-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Saudação e versículo do dia */
+.hello h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: -0.01em; }
+.hello blockquote { margin: 0; padding: 10px 14px; border-left: 3px solid var(--accent); background: var(--surface); border-radius: 0 8px 8px 0; font-size: 14.5px; line-height: 1.5; color: var(--ink); max-width: 880px; font-style: italic; }
+.hello cite { font-style: normal; font-weight: 600; color: var(--muted); font-size: 12.5px; margin-left: 4px; white-space: nowrap; }
+/* Próximos 6 meses */
+.months6 tr.red-row td { background: color-mix(in srgb, var(--out) 7%, transparent); }
+.months6 tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.months6 td:first-child a { color: inherit; font-weight: 600; }
+/* Dicas do mês */
+.tips .tip { padding: 10px 0; border-top: 1px solid var(--line); display: grid; gap: 4px; }
+.tips .tip:first-of-type { border-top: 0; padding-top: 0; }
+.tips .tip p { margin: 0; font-size: 13.5px; color: var(--muted); line-height: 1.45; }
+.tips .tip.next { background: var(--sunk); border-radius: 8px; padding: 10px 12px; border-top: 0; margin-top: 6px; }
+.tips .tip.next p { color: var(--ink); }

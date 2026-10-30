@@ -149,3 +149,34 @@ export function weekBuckets(balance: number, items: PendingItem[], d0: string, w
   }
   return out;
 }
+
+export type MonthOutlook = {
+  month: string; // AAAA-MM
+  startBalance: number;
+  receive: number;
+  pay: number;
+  result: number;
+  endBalance: number;
+  /** Quanto faturar a mais só para pagar as contas do próprio mês (a pagar − a receber já lançado). */
+  target: number;
+  /** Quanto falta para terminar o mês com saldo zero ou positivo (considerando o saldo que vem do mês anterior). */
+  shortfall: number;
+};
+
+/**
+ * Previsão mês a mês a partir do saldo de hoje e do que está lançado e em aberto.
+ * O primeiro mês da lista é o atual: as contas vencidas e não pagas entram nele.
+ */
+export function monthOutlook(balance: number, items: PendingItem[], d0: string, months: string[]): MonthOutlook[] {
+  let running = balance;
+  const current = d0.slice(0, 7);
+  return months.map((m) => {
+    const inMonth = items.filter((i) => i.dueDate.slice(0, 7) === m || (m === current && i.dueDate.slice(0, 7) < current));
+    const receive = inMonth.filter((i) => i.type === "entrada").reduce((s, i) => s + i.amount, 0);
+    const pay = inMonth.filter((i) => i.type === "saida").reduce((s, i) => s + i.amount, 0);
+    const startBalance = running;
+    const endBalance = startBalance + receive - pay;
+    running = endBalance;
+    return { month: m, startBalance, receive, pay, result: receive - pay, endBalance, target: Math.max(0, pay - receive), shortfall: Math.max(0, -endBalance) };
+  });
+}

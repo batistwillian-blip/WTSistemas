@@ -6,6 +6,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { createHmac } from "node:crypto";
 import { hash } from "@node-rs/argon2";
 import pg from "pg";
+import { DICAS } from "./dicas-sazonais.mjs";
 
 // Categorias de despesa do dia a dia para as empresas que usam o sistema como ERP (Aura e Sistemas).
 // Novas categorias podem ser criadas em Ajustes da empresa.
@@ -69,6 +70,14 @@ async function seed(client) {
         "insert into contas (empresa_id, nome, tipo) select $1, $2, $3 where not exists (select 1 from contas where empresa_id = $1 and nome = $2)",
         [id, c.nome, c.tipo],
       );
+    }
+    // Dicas de sazonalidade: só na primeira vez (depois a empresa edita as suas).
+    const tips = DICAS[e.slug] ?? [];
+    const { rows: hasTips } = await client.query("select 1 from dicas_sazonais where empresa_id = $1 limit 1", [id]);
+    if (tips.length && hasTips.length === 0) {
+      for (const [mes, titulo, texto] of tips) {
+        await client.query("insert into dicas_sazonais (empresa_id, mes, titulo, texto) values ($1, $2, $3, $4)", [id, mes, titulo, texto]);
+      }
     }
     for (const tipo of ["entrada", "saida"]) {
       for (const nome of e[tipo]) {
