@@ -40,6 +40,8 @@ export function TransactionForm({
   today,
   categoriesHref,
   nextDocument,
+  people = [],
+  peopleHref,
 }: {
   companyId: number;
   accounts: Opt[];
@@ -50,6 +52,9 @@ export function TransactionForm({
   categoriesHref?: string;
   /** Próximo nº automático, só para mostrar (o definitivo é dado ao salvar). */
   nextDocument?: string;
+  /** Cadastro de clientes e fornecedores da empresa, para escolher pelo nome. */
+  people?: { kind: string; code: string; name: string; active: boolean }[];
+  peopleHref?: string;
 }) {
   const isNew = !initial.id;
   const [type, setType] = useState(initial.type);
@@ -61,6 +66,9 @@ export function TransactionForm({
   const [parts, setParts] = useState("3");
   const [amountIs, setAmountIs] = useState<"total" | "parcela">("total");
   const entrada = type === "entrada";
+  const [party, setParty] = useState(initial.counterpart);
+  const partyOptions = people.filter((p) => p.kind === (entrada ? "cliente" : "fornecedor"));
+  const partyMatch = partyOptions.find((p) => p.name.toLocaleLowerCase("pt-BR") === party.trim().toLocaleLowerCase("pt-BR"));
 
   const [interval, setStep] = useState<"mensal" | "15" | "7" | "dias">("mensal");
   const [customDays, setCustomDays] = useState("30");
@@ -161,8 +169,39 @@ export function TransactionForm({
           </select>
         </label>
         <label>
-          {entrada ? "Cliente" : "Fornecedor"}
-          <input name="counterpart" defaultValue={initial.counterpart} maxLength={150} />
+          <span>
+            {entrada ? "Cliente" : "Fornecedor"}
+            {peopleHref && (
+              <a href={peopleHref} className="small" style={{ marginLeft: 8, fontWeight: 400 }}>
+                cadastro completo
+              </a>
+            )}
+          </span>
+          <input
+            name="counterpart"
+            list="tx-people"
+            value={party}
+            onChange={(e) => setParty(e.target.value)}
+            maxLength={150}
+            autoComplete="off"
+            placeholder="Digite para buscar no cadastro"
+          />
+          <datalist id="tx-people">
+            {partyOptions
+              .filter((p) => p.active)
+              .map((p) => (
+                <option key={p.code} value={p.name}>
+                  {p.code}
+                </option>
+              ))}
+          </datalist>
+          <span className="small muted" style={{ fontWeight: 400 }}>
+            {party.trim() === ""
+              ? "Opcional"
+              : partyMatch
+                ? `Cadastro ${partyMatch.code}`
+                : `Novo: será cadastrado como ${entrada ? "cliente" : "fornecedor"} ao salvar`}
+          </span>
         </label>
         <label>
           Data de {entrada ? "recebimento" : "pagamento"}

@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, gte, ilike, inArray, isNull, isNotNull, lte, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { accounts, categories, companies, sales, transactions, transfers } from "@/db/schema";
+import { accounts, categories, companies, people, sales, transactions, transfers } from "@/db/schema";
 import { today } from "./format";
 
 // Lançamentos "fora do saldo" (pagos importados do CH só para consulta) não aparecem em saldo, totais nem listas de lançamentos.
@@ -186,6 +186,7 @@ export async function billsInRange(
   from: string,
   to: string,
   excludeTransfers: boolean,
+  party?: string,
 ) {
   if (companyIds.length === 0) return [];
   const col =
@@ -232,9 +233,30 @@ export async function billsInRange(
         sql`${col} between ${from} and ${to}`,
         sql`coalesce(${transactions.externalId}, '') not like 'vendas:%'`,
         excludeTransfers ? isNull(transactions.transferId) : undefined,
+        party ? eq(transactions.counterpart, party) : undefined,
       ),
     )
     .orderBy(asc(transactions.dueDate), asc(transactions.id));
+}
+
+/** Fornecedores (saídas) ou clientes (entradas) já usados, com quantas contas cada um tem, para o filtro. */
+export async function partiesOf(companyIds: number[], type: "entrada" | "saida") {
+  if (companyIds.length === 0) return [];
+  return db
+    .select({ name: sql<string>`${transactions.counterpart}`, count: sql<number>`count(*)::int` })
+    .from(transactions)
+    .where(
+      and(
+        inArray(transactions.companyId, companyIds),
+        isNull(transactions.deletedAt),
+        eq(transactions.type, type),
+        isNotNull(transactions.counterpart),
+        sql`${transactions.counterpart} <> ''`,
+        sql`coalesce(${transactions.externalId}, '') not like 'vendas:%'`,
+      ),
+    )
+    .groupBy(transactions.counterpart)
+    .orderBy(sql`lower(${transactions.counterpart})`);
 }
 
 /** Contas já pagas/recebidas no período (pela data do pagamento), inclusive as importadas do CH só para consulta. */
@@ -361,4 +383,32 @@ export async function salesTotal(companyIds: number[], from: string, to: string)
     .from(sales)
     .where(and(inArray(sales.companyId, companyIds), isNull(sales.deletedAt), gte(sales.date, from), lte(sales.date, to)));
   return { net: Number(r.net), notes: r.notes };
+}
+
+/** Cadastros de clientes/fornecedores da empresa, para escolher no lançamento. */
+export async function getPeople(companyId: number) {
+  return db
+    .select({ id: people.id, kind: people.kind, code: people.code, name: people.name, active: people.active })
+    .from(people)
+    .where(eq(people.companyId, companyId))
+    .orderBy(sql`lower(${people.name})`);
+}
+
+/** Lista do cadastro com o movimento de cada um: pago/recebido, em aberto e vencido (todas as datas). */
+export async function peopleWithTotals(companyId: number, kind: "cliente" | "fornecedor", d0 = today()) {
+  const rows = await db
+    .select({
+      person: people,
+      paid: sql<string>`coalesce(sum(${transactions.amount}) filter (where ${transactions.paidAt} is not null and not ${transactions.offBalance}), 0)`,
+      open: sql<string>`coalesce(sum(${transactions.amount}) filter (where ${transactions.paidAt} is null), 0)`,
+      overdue: sql<string>`coalesce(sum(${transactions.amount}) filter (where ${transactions.paidAt} is null and ${transactions.dueDate} < ${d0}), 0)`,
+      count: sql<number>`count(${transactions.id})::int`,
+      last: sql<string | null>`max(${transactions.dueDate})`,
+    })
+    .from(people)
+    .leftJoin(transactions, and(eq(transactions.personId, people.id), isNull(transactions.deletedAt)))
+    .where(and(eq(people.companyId, companyId), eq(people.kind, kind)))
+    .groupBy(people.id)
+    .orderBy(sql`lower(${people.name})`);
+  return rows.map((r) => ({ ...r, paid: Number(r.paid), open: Number(r.open), overdue: Number(r.overdue) }));
 }

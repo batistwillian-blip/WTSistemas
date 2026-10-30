@@ -1,11 +1,16 @@
-import { addDays, addMonths, monthEnd, today } from "./format";
+import { addDays, addMonths, isValidIsoDate, monthEnd, today } from "./format";
 
 /** Filtros da tela de contas a pagar/receber, lidos da URL. Sem nada: mês atual, todas as situações, por vencimento. */
 export type BillStatus = "todas" | "aberto" | "vencidas" | "pagas";
 export type BillBase = "vencimento" | "pagamento" | "competencia";
 export type BillFilters = {
-  month: string | "todas";
+  /** "AAAA-MM", "todas" (todo o período) ou "periodo" (datas de/até em from/to). */
+  month: string;
+  from: string | null;
+  to: string | null;
   status: BillStatus;
+  /** Fornecedor ou cliente exato (campo cliente/fornecedor da conta). */
+  party: string;
   base: BillBase;
   category: string;
   account: number | null;
@@ -23,17 +28,17 @@ export function readBillFilters(sp: SP, d0 = today()): BillFilters {
   // "pagas" é o nome antigo da aba; continua valendo.
   const status: BillStatus = rawStatus === "aberto" || rawStatus === "vencidas" || rawStatus === "pagas" ? rawStatus : "todas";
   const rawMonth = one(sp, "mes");
-  // "Todos os meses" só para o que está em aberto ou vencido (pagas de todos os tempos seriam milhares de linhas).
-  const month =
-    rawMonth === "todas" && (status === "aberto" || status === "vencidas")
-      ? "todas"
-      : /^\d{4}-(0[1-9]|1[0-2])$/.test(rawMonth)
-        ? rawMonth
-        : d0.slice(0, 7);
+  const de = one(sp, "de");
+  const ate = one(sp, "ate");
+  const custom = isValidIsoDate(de) && isValidIsoDate(ate) && de <= ate;
+  const month = custom ? "periodo" : rawMonth === "todas" ? "todas" : /^\d{4}-(0[1-9]|1[0-2])$/.test(rawMonth) ? rawMonth : d0.slice(0, 7);
   const rawBase = one(sp, "ver");
   return {
     month,
+    from: custom ? de : null,
+    to: custom ? ate : null,
     status,
+    party: one(sp, "fornecedor").trim().slice(0, 150),
     base: rawBase === "pagamento" || rawBase === "competencia" ? rawBase : "vencimento",
     category: one(sp, "categoria").slice(0, 100),
     account: /^\d+$/.test(one(sp, "conta")) ? Number(one(sp, "conta")) : null,
@@ -43,6 +48,7 @@ export function readBillFilters(sp: SP, d0 = today()): BillFilters {
 
 /** Intervalo de datas a buscar para os filtros. */
 export function billRange(f: BillFilters, d0 = today()): { from: string; to: string } {
+  if (f.month === "periodo" && f.from && f.to) return { from: f.from, to: f.to };
   if (f.month === "todas") return { from: "1900-01-01", to: f.status === "vencidas" ? addDays(d0, -1) : "2999-12-31" };
   return { from: `${f.month}-01`, to: monthEnd(`${f.month}-01`) };
 }
@@ -93,6 +99,7 @@ export function applyFilters<T extends BillRow>(rows: T[], f: BillFilters, d0 = 
     if (f.status === "aberto" && s === "paga") return false;
     if (f.status === "vencidas" && s !== "vencida") return false;
     if (f.category && categoryOf(r) !== f.category) return false;
+    if (f.party && (r.counterpart ?? "") !== f.party) return false;
     if (f.account && r.accountId !== f.account) return false;
     if (q && ![r.description, r.counterpart, r.document].some((v) => v?.toLocaleLowerCase("pt-BR").includes(q))) return false;
     return true;
@@ -148,4 +155,34 @@ export function csvCell(v: string | number | null | undefined): string {
   let s = v === null || v === undefined ? "" : String(v);
   if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** Ficha do fornecedor/cliente em todo o período: quanto já foi pago, quanto falta, vencido, próximas e histórico mensal. */
+export function partyProfile<T extends BillRow>(rows: T[], d0 = today()) {
+  const counted = rows.filter((r) => !r.offBalance);
+  const sum = (l: BillRow[]) => l.reduce((s, r) => s + r.amount, 0);
+  const paid = counted.filter((r) => r.paidAt);
+  const open = counted.filter((r) => !r.paidAt);
+  const overdue = open.filter((r) => r.dueDate < d0);
+  const next = open.filter((r) => r.dueDate >= d0).sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0] ?? null;
+  const lastPaid = paid.map((r) => r.paidAt!).sort().at(-1) ?? null;
+  // Pago por mês nos últimos 12 meses (pela data do pagamento).
+  const months: { month: string; value: number }[] = [];
+  for (let i = 11; i >= 0; i--) {
+    const m = addMonths(d0.slice(0, 8) + "01", -i).slice(0, 7);
+    months.push({ month: m, value: sum(paid.filter((r) => r.paidAt!.startsWith(m))) });
+  }
+  return {
+    paid: sum(paid),
+    paidCount: paid.length,
+    open: sum(open),
+    openCount: open.length,
+    overdue: sum(overdue),
+    overdueCount: overdue.length,
+    total: sum(counted),
+    next,
+    lastPaid,
+    months,
+    consult: sum(rows.filter((r) => r.offBalance)),
+  };
 }

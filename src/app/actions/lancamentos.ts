@@ -9,6 +9,8 @@ import { requireCompanyId } from "@/lib/access";
 import { logChange } from "@/lib/audit";
 import { competenceOf, parsePlan, planSeries, settle, shiftCompetence, OPEN_ENDED_MONTHS, SYSTEM_DOC, type SeriesMode } from "@/lib/billing";
 import { nextDocument } from "@/lib/documents";
+import { findOrCreatePerson } from "@/lib/people";
+import { personKindOf } from "@/lib/people-sql";
 import { today } from "@/lib/format";
 import { guard, int, isoDate, money, optStr, str, UserError, type ActionState } from "@/lib/form";
 
@@ -69,9 +71,18 @@ export async function saveTransaction(_prev: ActionState, fd: FormData): Promise
       paidAt,
       accountId: account.id,
       categoryId: categoryId ?? null,
-      counterpart: optStr(fd, "counterpart", 150),
+      counterpart: null as string | null,
+      personId: null as number | null,
       notes: optStr(fd, "notes", 1000),
     };
+    // Cliente/fornecedor: usa o cadastro com esse nome ou cria na hora (só com o nome, com código C/F).
+    const partyName = optStr(fd, "counterpart", 150);
+    if (partyName) {
+      const { person, created } = await findOrCreatePerson(companyId, personKindOf(values.type), { name: partyName }, user.id);
+      if (created) await logChange({ user, companyId, action: "criar", entity: "pessoa", entityId: person.id, after: person });
+      values.counterpart = person.name;
+      values.personId = person.id;
+    }
 
     if (id) {
       const before = await loadEditable(id);
@@ -96,7 +107,7 @@ export async function saveTransaction(_prev: ActionState, fd: FormData): Promise
             accountId: values.accountId,
             categoryId: values.categoryId,
             counterpart: values.counterpart,
-            // Na parcelada cada uma tem o seu "(k/N)"; na fixa a descrição acompanha.
+            personId: values.personId,
             description: values.description,
             updatedAt: new Date(),
           })
@@ -294,6 +305,7 @@ export async function settleTransaction(_prev: ActionState, fd: FormData): Promi
           description: before.description,
           categoryId: before.categoryId,
           counterpart: before.counterpart,
+          personId: before.personId,
           amount: r.paid,
           interest: r.interest,
           discount: r.discount,

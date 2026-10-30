@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { applyFilters, billRange, byCategory, csvCell, readBillFilters, summarize, weekGroups, type BillRow } from "@/lib/bills";
+import { applyFilters, billRange, byCategory, csvCell, partyProfile, readBillFilters, summarize, weekGroups, type BillRow } from "@/lib/bills";
+import { normalizeTaxId } from "@/lib/people-sql";
 
 
 const D0 = "2026-10-15";
@@ -24,8 +25,8 @@ describe("filtros de contas", () => {
     expect(billRange(readBillFilters({}, D0), D0)).toEqual({ from: "2026-10-01", to: "2026-10-31" });
   });
 
-  it("todos os meses só vale para em aberto ou vencidas", () => {
-    expect(readBillFilters({ mes: "todas", situacao: "pagas" }, D0).month).toBe("2026-10");
+  it("todo o período: vencidas vão só até ontem", () => {
+    expect(readBillFilters({ mes: "todas", situacao: "pagas" }, D0).month).toBe("todas");
     const f = readBillFilters({ mes: "todas", situacao: "vencidas" }, D0);
     expect(billRange(f, D0)).toEqual({ from: "1900-01-01", to: "2026-10-14" });
   });
@@ -64,5 +65,28 @@ describe("exportação", () => {
     expect(csvCell("=HYPERLINK(1)")).toBe("'=HYPERLINK(1)");
     expect(csvCell('a;b"c')).toBe('"a;b""c"');
     expect(csvCell(null)).toBe("");
+  });
+});
+
+describe("cadastro de pessoas", () => {
+  it("formata CPF e CNPJ e recusa tamanho errado", () => {
+    expect(normalizeTaxId("12345678901")).toEqual({ value: "123.456.789-01" });
+    expect(normalizeTaxId("12.345.678/0001-90")).toEqual({ value: "12.345.678/0001-90" });
+    expect(normalizeTaxId("")).toEqual({ value: null });
+    expect(normalizeTaxId("123")).toHaveProperty("error");
+  });
+
+  it("filtra por fornecedor exato e lê período por datas", () => {
+    const f = readBillFilters({ fornecedor: "Copel", de: "2026-01-01", ate: "2026-03-31" }, D0);
+    expect(f).toMatchObject({ party: "Copel", month: "periodo" });
+    expect(billRange(f, D0)).toEqual({ from: "2026-01-01", to: "2026-03-31" });
+    const rows = [row({ id: 1, counterpart: "Copel" }), row({ id: 2, counterpart: "Copel Telecom" })];
+    expect(applyFilters(rows, f, D0).map((r) => r.id)).toEqual([1]);
+  });
+
+  it("ficha soma pago, aberto e vencido", () => {
+    const p = partyProfile([row({ id: 1, paidAt: "2026-09-10", amount: 500 }), row({ id: 2, dueDate: "2026-10-01" }), row({ id: 3, dueDate: "2026-11-01" })], D0);
+    expect(p).toMatchObject({ paid: 500, open: 2000, overdue: 1000, total: 2500, lastPaid: "2026-09-10" });
+    expect(p.next?.id).toBe(3);
   });
 });

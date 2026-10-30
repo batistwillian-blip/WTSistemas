@@ -39,6 +39,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: `${base}/receber`, label: "Contas a receber", count: overdueOf(list, consolidated, "entrada"), sub: true },
     { href: `${base}/projecao`, label: "Projeção", sub: true },
     { href: `${base}/relatorios`, label: "Relatórios", sub: true },
+    // Cadastro é por empresa; no consolidado não aparece.
+    ...(consolidated ? [] : [{ href: `${base}/pessoas`, label: "Clientes e fornecedores", sub: true }]),
   ];
 
   const groups: NavGroup[] = [];

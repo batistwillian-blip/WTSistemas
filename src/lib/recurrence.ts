@@ -57,6 +57,7 @@ export async function extendOpenEnded(companyIds: number[]) {
           description: model.description,
           categoryId: model.categoryId,
           counterpart: model.counterpart,
+          personId: model.personId,
           amount: model.originalAmount ?? model.amount - model.interest + model.discount,
           dueDate,
           competence: monthStart(dueDate),

@@ -71,6 +71,13 @@
       "when": 1793317463835,
       "tag": "0009_parcelas_e_documento",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793321882114,
+      "tag": "0010_pessoas",
+      "breakpoints": true
     }
   ]
 }

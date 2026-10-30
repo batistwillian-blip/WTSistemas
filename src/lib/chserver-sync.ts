@@ -2,6 +2,7 @@
 // Usado pela importação automática, pelo botão do administrador, pela rota agendada e pelo script.
 import { and, eq, gte, inArray, isNull, like, lte, sql } from "drizzle-orm";
 import { db } from "@/db";
+import { linkPeople } from "./people";
 import { accounts, auditLog, companies, integrationRuns, integrationSettings, sales, transactions } from "@/db/schema";
 import { chGet, mapSale, mapTitle, readChConfig, titleState, toChDate, type ChConfig, type ChSale, type ChTitle } from "./chserver";
 import { addDays, addMonths, formatMoney, monthEnd, monthStart, today } from "./format";
@@ -214,6 +215,8 @@ async function runSync(triggeredBy: { id: number; name: string } | null): Promis
         vendas: salesInfo?.count ?? null,
       },
     });
+    // Fornecedores novos vindos do CH ganham cadastro (com código) e ficam ligados às contas.
+    await linkPeople([companyId]).catch((e) => console.error("Falha ao cadastrar fornecedores do CH:", e));
     return finish({ ok: true, message, created, updated });
   } catch (e) {
     // As mensagens de erro nunca incluem o token.

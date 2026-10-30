@@ -9,6 +9,7 @@ import {
   categoryOf,
   dateOf,
   monthNav,
+  partyProfile,
   readBillFilters,
   situation,
   summarize,
@@ -16,7 +17,7 @@ import {
   type BillFilters,
 } from "@/lib/bills";
 import { addDays, formatDate, formatMoney, today } from "@/lib/format";
-import { billsInRange, getAccounts, pendingItems } from "@/lib/queries";
+import { billsInRange, getAccounts, partiesOf, pendingItems } from "@/lib/queries";
 import { roleAllows } from "@/lib/roles";
 import { SettleButton } from "./SettleButton";
 
@@ -50,13 +51,19 @@ export async function BillsView({
   const ids = companies.map((c) => c.id);
   const byId = new Map(companies.map((c) => [c.id, c]));
   const { from, to } = billRange(f, d0);
-  const [all, accs, pending] = await Promise.all([
-    billsInRange(ids, type, f.base, from, to, consolidated),
+  const [all, accs, pending, partyList, partyRows] = await Promise.all([
+    billsInRange(ids, type, f.base, from, to, consolidated, f.party || undefined),
     getAccounts(ids),
     f.month === "todas" ? Promise.resolve([]) : pendingItems(ids, addDays(from, -1)),
+    partiesOf(ids, type),
+    // Ficha do fornecedor/cliente: tudo dele, de todos os meses.
+    f.party ? billsInRange(ids, type, "vencimento", "1900-01-01", "2999-12-31", consolidated, f.party) : Promise.resolve(null),
   ]);
+  const profile = partyRows ? partyProfile(partyRows, d0) : null;
   // Vencidas que ficaram para trás em meses anteriores: aviso no topo para não se perderem.
-  const lateBefore = pending.filter((p) => p.type === type && p.dueDate < from && !(consolidated && p.transferId));
+  const lateBefore = pending.filter(
+    (p) => p.type === type && p.dueDate < from && !(consolidated && p.transferId) && (!f.party || p.counterpart === f.party),
+  );
 
   // Totais e categorias usam o mês inteiro com os filtros de categoria/conta/busca, mas sem o de situação
   // (assim os cartões mostram previsto, pago, em aberto e vencido lado a lado).
@@ -74,9 +81,14 @@ export async function BillsView({
     : { paid: "Pagas", open: "A pagar", verb: "pagar", party: "Fornecedores" };
   const tone = entrada ? "pos" : "neg";
 
-  const qs = (patch: Partial<Record<"mes" | "situacao" | "ver" | "categoria" | "conta" | "q", string | null>>) => {
+  const qs = (patch: Partial<Record<"mes" | "de" | "ate" | "situacao" | "ver" | "categoria" | "conta" | "q" | "fornecedor", string | null>>) => {
+    // Trocar de mês desliga o período por datas.
+    if ("mes" in patch) patch = { de: null, ate: null, ...patch };
     const cur: Record<string, string> = {
-      mes: f.month === d0.slice(0, 7) ? "" : f.month,
+      mes: f.month === d0.slice(0, 7) || f.month === "periodo" ? "" : f.month,
+      de: f.from ?? "",
+      ate: f.to ?? "",
+      fornecedor: f.party,
       situacao: f.status === "todas" ? "" : f.status,
       ver: f.base === "vencimento" ? "" : f.base,
       categoria: f.category,
@@ -89,9 +101,10 @@ export async function BillsView({
     return s ? `${basePath}?${s}` : basePath;
   };
 
-  const nav = f.month === "todas" ? null : monthNav(f.month);
+  const nav = f.month === "todas" || f.month === "periodo" ? null : monthNav(f.month);
+  const periodWord = f.month === "todas" || f.month === "periodo" ? "período" : "mês";
   const cards: { key: BillFilters["status"]; label: string; value: number; count: number; cls: string }[] = [
-    { key: "todas", label: `Total do ${f.month === "todas" ? "período" : "mês"}`, value: totals.total, count: totals.totalCount, cls: tone },
+    { key: "todas", label: `Total do ${periodWord}`, value: totals.total, count: totals.totalCount, cls: tone },
     { key: "pagas", label: words.paid, value: totals.paid, count: totals.paidCount, cls: "" },
     { key: "aberto", label: words.open, value: totals.open, count: totals.openCount, cls: tone },
     { key: "vencidas", label: "Vencidas", value: totals.overdue, count: totals.overdueCount, cls: totals.overdueCount ? "neg" : "" },
@@ -99,7 +112,8 @@ export async function BillsView({
   const progress = totals.total ? Math.round((totals.paid / totals.total) * 100) : 0;
   const parties = topParties(scoped);
   const accountOptions = accs.filter((a) => a.active || a.id === f.account);
-  const filtered = Boolean(f.category || f.account || f.q);
+  const filtered = Boolean(f.category || f.account || f.q || f.party);
+  const partyWord = entrada ? "Cliente" : "Fornecedor";
 
   return (
     <div className="stack">
@@ -120,10 +134,13 @@ export async function BillsView({
                   Mês atual
                 </Link>
               )}
+              <Link className="btn sm" href={qs({ mes: "todas" })}>
+                Todo o período
+              </Link>
             </>
           ) : (
             <>
-              <h2>Todos os meses</h2>
+              <h2>{f.month === "periodo" ? `${formatDate(f.from)} a ${formatDate(f.to)}` : "Todo o período"}</h2>
               <Link className="btn sm" href={qs({ mes: null })}>
                 Voltar ao mês atual
               </Link>
@@ -157,6 +174,76 @@ export async function BillsView({
         </div>
       )}
 
+      {profile && (
+        <div className="card party">
+          <div className="panel-h">
+            <div>
+              <span className="eyebrow">{partyWord} · todo o período</span>
+              <h2 style={{ margin: "2px 0 0" }}>{f.party}</h2>
+            </div>
+            <span style={{ display: "flex", gap: 8 }}>
+              {f.month !== "todas" && (
+                <Link className="btn sm" href={qs({ mes: "todas" })}>
+                  Ver todas as contas dele
+                </Link>
+              )}
+              <Link className="btn sm" href={qs({ fornecedor: null })}>
+                Tirar filtro
+              </Link>
+            </span>
+          </div>
+          <div className="party-grid">
+            <div>
+              <span className="label">{entrada ? "Já recebido" : "Já pago"}</span>
+              <b className="num">{formatMoney(profile.paid)}</b>
+              <span className="sub">
+                {profile.paidCount} {profile.paidCount === 1 ? "conta" : "contas"}
+                {profile.lastPaid && ` · último em ${formatDate(profile.lastPaid)}`}
+              </span>
+            </div>
+            <div>
+              <span className="label">Falta {words.verb}</span>
+              <b className={`num ${tone}`}>{formatMoney(profile.open)}</b>
+              <span className="sub">
+                {profile.openCount} {profile.openCount === 1 ? "conta" : "contas"}
+              </span>
+            </div>
+            <div>
+              <span className="label">Vencido</span>
+              <b className={`num ${profile.overdueCount ? "neg" : ""}`}>{formatMoney(profile.overdue)}</b>
+              <span className="sub">
+                {profile.overdueCount} {profile.overdueCount === 1 ? "conta" : "contas"}
+              </span>
+            </div>
+            <div>
+              <span className="label">Próximo vencimento</span>
+              <b className="num">{profile.next ? formatMoney(profile.next.amount) : "—"}</b>
+              <span className="sub">{profile.next ? `${formatDate(profile.next.dueDate)}${installmentLabel(profile.next) ? ` · parcela ${installmentLabel(profile.next)}` : ""}` : "nada a vencer"}</span>
+            </div>
+            <div>
+              <span className="label">Total geral</span>
+              <b className="num">{formatMoney(profile.total)}</b>
+              <span className="sub">{profile.total ? Math.round((profile.paid / profile.total) * 100) : 0}% quitado</span>
+            </div>
+          </div>
+          {profile.months.some((m) => m.value > 0) && (
+            <div className="party-months" aria-label={`${entrada ? "Recebido" : "Pago"} por mês nos últimos 12 meses`}>
+              {profile.months.map((m) => {
+                const max = Math.max(...profile.months.map((x) => x.value));
+                return (
+                  <Link key={m.month} href={qs({ mes: m.month, ver: "pagamento" })} title={`${monthTitle(m.month)}: ${formatMoney(m.value)}`}>
+                    <span className="pm-bar">
+                      <span style={{ height: `${max ? Math.max(m.value ? 4 : 0, Math.round((m.value / max) * 100)) : 0}%` }} />
+                    </span>
+                    <small>{SHORT[Number(m.month.slice(5, 7)) - 1]}</small>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Totais do mês: clicar filtra a lista */}
       <div className="grid k4 bill-cards">
         {cards.map((c) => (
@@ -165,7 +252,7 @@ export async function BillsView({
             <span className={`value ${c.cls}`}>{formatMoney(c.value)}</span>
             <span className="sub">
               {c.count} {c.count === 1 ? "conta" : "contas"}
-              {c.key === "pagas" && totals.total > 0 && ` · ${progress}% do mês`}
+              {c.key === "pagas" && totals.total > 0 && ` · ${progress}% do ${periodWord}`}
             </span>
           </Link>
         ))}
@@ -178,7 +265,7 @@ export async function BillsView({
 
       {/* Filtros */}
       <form method="get" className="card filters">
-        {f.month !== d0.slice(0, 7) && <input type="hidden" name="mes" value={f.month} />}
+        {f.month !== d0.slice(0, 7) && f.month !== "periodo" && <input type="hidden" name="mes" value={f.month} />}
         {f.status !== "todas" && <input type="hidden" name="situacao" value={f.status} />}
         {f.base !== "vencimento" && <input type="hidden" name="ver" value={f.base} />}
         <label>
@@ -206,6 +293,25 @@ export async function BillsView({
             ))}
           </select>
         </label>
+        <label style={{ minWidth: 200 }}>
+          {partyWord}
+          <input name="fornecedor" list="bill-parties" defaultValue={f.party} placeholder={`Todos (digite ou escolha)`} autoComplete="off" />
+          <datalist id="bill-parties">
+            {partyList.map((p) => (
+              <option key={p.name} value={p.name}>
+                {p.count} {p.count === 1 ? "conta" : "contas"}
+              </option>
+            ))}
+          </datalist>
+        </label>
+        <label style={{ minWidth: 130 }}>
+          De
+          <input type="date" name="de" defaultValue={f.from ?? ""} />
+        </label>
+        <label style={{ minWidth: 130 }}>
+          Até
+          <input type="date" name="ate" defaultValue={f.to ?? ""} />
+        </label>
         <label style={{ flex: 1, minWidth: 200 }}>
           Buscar
           <input name="q" defaultValue={f.q} placeholder={`Descrição, ${entrada ? "cliente" : "fornecedor"} ou nº do documento`} />
@@ -214,7 +320,7 @@ export async function BillsView({
           Filtrar
         </button>
         {filtered && (
-          <Link className="btn" href={qs({ categoria: null, conta: null, q: null })}>
+          <Link className="btn" href={qs({ categoria: null, conta: null, q: null, fornecedor: null })}>
             Limpar
           </Link>
         )}
@@ -235,7 +341,7 @@ export async function BillsView({
               {formatMoney(list.filter((r) => !r.offBalance).reduce((s, r) => s + r.amount, 0))} · {list.length} {list.length === 1 ? "conta" : "contas"}
             </span>
           </div>
-          {list.length === 0 && <p className="muted">Nenhuma conta {f.month === "todas" ? "" : "neste mês "}com esses filtros.</p>}
+          {list.length === 0 && <p className="muted">Nenhuma conta {nav ? "neste mês " : "no período "}com esses filtros.</p>}
           {groups.map((g) => {
             const sub = g.rows.filter((r) => !r.offBalance).reduce((s, r) => s + r.amount, 0);
             const current = g.start <= d0 && d0 <= g.end;
@@ -291,7 +397,14 @@ export async function BillsView({
                             )}
                             {r.document && <span className="doc">Doc {r.document} · </span>}
                             {categoryOf(r)}
-                            {r.counterpart && <> · {r.counterpart}</>}
+                            {r.counterpart && (
+                              <>
+                                {" · "}
+                                <Link href={qs({ fornecedor: r.counterpart })} title={`Ver só ${r.counterpart}`}>
+                                  {r.counterpart}
+                                </Link>
+                              </>
+                            )}
                             {f.base !== "vencimento" && <> · vence {ddmm(r.dueDate)}</>}
                             {r.paidAt && !r.offBalance && <> · {r.accountName}</>}
                           </div>
@@ -374,7 +487,7 @@ export async function BillsView({
               </div>
               <div className="list">
                 {parties.map((p) => (
-                  <Link key={p.name} href={qs({ q: p.name })} className="li" style={{ gridTemplateColumns: "minmax(0,1fr) auto", color: "inherit" }}>
+                  <Link key={p.name} href={qs({ fornecedor: p.name })} className="li" style={{ gridTemplateColumns: "minmax(0,1fr) auto", color: "inherit" }}>
                     <span>
                       {p.name} <span className="small muted">· {p.count}</span>
                     </span>

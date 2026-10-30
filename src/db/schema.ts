@@ -15,6 +15,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // Valores monetários são sempre guardados em centavos (inteiro) para evitar erro de arredondamento.
 const cents = (name: string) => bigint(name, { mode: "number" });
@@ -171,6 +172,8 @@ export const transactions = pgTable(
     document: text("documento"),
     // Mês de competência (guardado como o dia 1 do mês); sem valor, vale o mês do vencimento.
     competence: date("competencia"),
+    // Cadastro do cliente/fornecedor; cliente_fornecedor guarda o nome (cópia) para listas e filtros.
+    personId: integer("pessoa_id").references((): AnyPgColumn => people.id),
   },
   (t) => [
     index("lancamentos_empresa_venc_idx").on(t.companyId, t.dueDate),
@@ -291,3 +294,46 @@ export const documentSequences = pgTable("sequencias_documento", {
     .references(() => companies.id),
   last: integer("ultimo").notNull().default(0),
 });
+
+/**
+ * Clientes e fornecedores de cada empresa. Código próprio por tipo (C00001 para clientes, F00001 para fornecedores).
+ * Só o nome é obrigatório; documento (CPF/CNPJ), contato e PIX são opcionais.
+ */
+export const people = pgTable(
+  "pessoas",
+  {
+    id: serial("id").primaryKey(),
+    companyId: integer("empresa_id")
+      .notNull()
+      .references(() => companies.id),
+    kind: text("tipo").notNull(), // "cliente" | "fornecedor"
+    code: text("codigo").notNull(),
+    name: text("nome").notNull(),
+    taxId: text("cpf_cnpj"),
+    phone: text("telefone"),
+    email: text("email"),
+    pix: text("pix"),
+    address: text("endereco"),
+    notes: text("observacoes"),
+    active: boolean("ativo").notNull().default(true),
+    createdBy: integer("criado_por").references(() => users.id),
+    createdAt: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("pessoas_codigo_uidx").on(t.companyId, t.code),
+    uniqueIndex("pessoas_nome_uidx").on(t.companyId, t.kind, sql`lower(${t.name})`),
+  ],
+);
+
+/** Última numeração de cliente (C) e de fornecedor (F) usada em cada empresa. */
+export const personSequences = pgTable(
+  "sequencias_pessoa",
+  {
+    companyId: integer("empresa_id")
+      .notNull()
+      .references(() => companies.id),
+    kind: text("tipo").notNull(),
+    last: integer("ultimo").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.companyId, t.kind] })],
+);

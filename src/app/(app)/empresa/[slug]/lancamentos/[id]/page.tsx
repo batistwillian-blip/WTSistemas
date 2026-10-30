@@ -3,7 +3,7 @@ import { PageHead } from "@/components/PageHead";
 import { notFound } from "next/navigation";
 import { requireCompany } from "@/lib/access";
 import { formatDate, today } from "@/lib/format";
-import { getAccounts, getCategories, getTransaction } from "@/lib/queries";
+import { getAccounts, getCategories, getPeople, getTransaction } from "@/lib/queries";
 import { roleAllows } from "@/lib/roles";
 import { installmentLabel } from "@/lib/billing";
 import { TransactionForm } from "../TransactionForm";
@@ -14,7 +14,7 @@ export default async function EditarLancamentoPage({ params }: { params: Promise
   const tx = /^\d+$/.test(id) ? await getTransaction(Number(id)) : null;
   if (!tx || tx.companyId !== company.id) notFound();
   const editable = roleAllows(role, "lancar") && tx.source === "manual" && !tx.transferId;
-  const [accounts, categories] = await Promise.all([getAccounts([company.id]), getCategories(company.id)]);
+  const [accounts, categories, people] = await Promise.all([getAccounts([company.id]), getCategories(company.id), getPeople(company.id)]);
   return (
     <div className="stack">
       <PageHead context={company.name} color={company.color} title={`${editable ? "Editar lançamento" : "Lançamento"}${tx.installment ? ` · parcela ${installmentLabel(tx)}` : ""}`} subtitle={<Link href={`/empresa/${slug}/lancamentos`}>← Voltar para lançamentos</Link>} />
@@ -28,6 +28,7 @@ export default async function EditarLancamentoPage({ params }: { params: Promise
           accounts={accounts.filter((a) => a.active || a.id === tx.accountId)}
           categories={categories.filter((c) => c.active || c.id === tx.categoryId)}
           today={today()}
+          people={people}
           categoriesHref={roleAllows(role, "gerir") ? `/empresa/${slug}/ajustes` : undefined}
           initial={{
             id: tx.id,
