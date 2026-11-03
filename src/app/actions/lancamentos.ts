@@ -2,7 +2,8 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { and, eq, gte, isNull, sql } from "drizzle-orm";
+import { redirect } from "next/navigation";
+import { and, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { accounts, categories, transactions } from "@/db/schema";
 import { requireCompanyId } from "@/lib/access";
@@ -336,43 +337,67 @@ export async function settleTransaction(_prev: ActionState, fd: FormData): Promi
   });
 }
 
-export async function deleteTransaction(fd: FormData) {
-  const id = int(fd, "id");
-  if (!id) return;
-  const before = await loadEditable(id);
-  const { user } = await requireCompanyId(before.companyId, "gerir");
-  if (before.source !== "manual") return;
-  // Excluir um pagamento parcial é o mesmo que estorná-lo: o valor volta para a conta em aberto.
-  if (before.partialOf && before.paidAt) {
-    await undoSettlement(before, user);
+/**
+ * Exclui uma conta lançada por engano (fica marcada como excluída e registrada no log, não some do banco).
+ * Em séries (fixa ou parcelada): só esta, esta e as próximas em aberto, ou todas as em aberto da série.
+ * Parcelas já pagas da série não são tocadas; um pagamento parcial é estornado em vez de excluído.
+ */
+export async function removeTransaction(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  return guard(async () => {
+    const id = int(fd, "id");
+    if (!id) throw new UserError("Lançamento inválido.");
+    const before = await loadEditable(id);
+    const { user } = await requireCompanyId(before.companyId, "lancar");
+    if (before.source !== "manual") throw new UserError("Esta conta veio do CHServer. Exclua lá; a próxima sincronização atualiza aqui.");
+    // Excluir um pagamento parcial é o mesmo que estorná-lo: o valor volta para a conta em aberto.
+    if (before.partialOf && before.paidAt) {
+      await undoSettlement(before, user);
+      revalidatePath("/", "layout");
+      return { ok: "Pagamento parcial estornado: o valor voltou para a conta em aberto." };
+    }
+    const scope = str(fd, "scope");
+    const group = before.recurrenceGroup;
+    const series =
+      group && (scope === "futuras" || scope === "todas")
+        ? await db
+            .select()
+            .from(transactions)
+            .where(and(eq(transactions.recurrenceGroup, group), isNull(transactions.deletedAt), isNull(transactions.paidAt), isNull(transactions.partialOf)))
+            .then((r) => r.filter((t) => t.id !== before.id && (scope === "todas" || t.dueDate >= before.dueDate)))
+        : [];
+    const rows = [before, ...series];
+    const ids = rows.map((r) => r.id);
+    // Conta com pagamento parcial registrado: estornar primeiro, para o dinheiro que já entrou/saiu não ficar solto.
+    const [withPartial] = await db
+      .select({ id: transactions.partialOf })
+      .from(transactions)
+      .where(and(inArray(transactions.partialOf, ids), isNull(transactions.deletedAt)))
+      .limit(1);
+    if (withPartial) {
+      throw new UserError("Esta conta tem um pagamento parcial registrado. Estorne o pagamento parcial antes de excluir.");
+    }
+    await db.transaction(async (tx) => {
+      await tx.update(transactions).set({ deletedAt: new Date() }).where(inArray(transactions.id, ids));
+      // Conta fixa sem fim: excluir daqui para frente encerra a série (o sistema para de gerar os próximos meses).
+      if (group && before.openEnded && (scope === "futuras" || scope === "todas")) {
+        await tx.update(transactions).set({ openEnded: false }).where(eq(transactions.recurrenceGroup, group));
+      }
+      await logChange(
+        {
+          user,
+          companyId: before.companyId,
+          action: "excluir",
+          entity: "lancamento",
+          entityId: ids.join(","),
+          before: rows.length === 1 ? before : { ...before, ocorrencias: rows.length, escopo: scope },
+        },
+        tx,
+      );
+    });
     revalidatePath("/", "layout");
-    return;
-  }
-  const scope = str(fd, "scope");
-  // "futuras" exclui esta e as próximas ocorrências pendentes da mesma recorrência.
-  const rows =
-    scope === "futuras" && before.recurrenceGroup
-      ? await db
-          .select()
-          .from(transactions)
-          .where(and(eq(transactions.recurrenceGroup, before.recurrenceGroup), isNull(transactions.deletedAt), isNull(transactions.paidAt)))
-          .then((r) => r.filter((t) => t.dueDate >= before.dueDate))
-      : [before];
-  const now = new Date();
-  for (const r of rows) {
-    await db.update(transactions).set({ deletedAt: now }).where(eq(transactions.id, r.id));
-  }
-  // Encerrar uma conta fixa sem fim: para de gerar os próximos meses.
-  if (scope === "futuras" && before.recurrenceGroup && before.openEnded) {
-    await db.update(transactions).set({ openEnded: false }).where(eq(transactions.recurrenceGroup, before.recurrenceGroup));
-  }
-  await logChange({
-    user,
-    companyId: before.companyId,
-    action: "excluir",
-    entity: "lancamento",
-    entityId: rows.map((r) => r.id).join(","),
-    before: rows.length === 1 ? before : { ...before, ocorrencias: rows.length },
+    // Da tela de edição a conta deixa de existir: volta para a lista (só caminhos internos).
+    const back = str(fd, "redirectTo", 200);
+    if (/^\/empresa\/[a-z0-9-]+\/(pagar|receber|lancamentos)$/.test(back)) redirect(back);
+    return { ok: rows.length === 1 ? "Conta excluída." : `${rows.length} contas excluídas.` };
   });
-  revalidatePath("/", "layout");
 }

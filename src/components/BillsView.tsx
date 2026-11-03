@@ -19,6 +19,7 @@ import {
 import { addDays, formatDate, formatMoney, today } from "@/lib/format";
 import { billsInRange, getAccounts, partiesOf, pendingItems } from "@/lib/queries";
 import { roleAllows } from "@/lib/roles";
+import { DeleteButton } from "./DeleteButton";
 import { SettleButton } from "./SettleButton";
 
 const MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
@@ -62,7 +63,7 @@ export async function BillsView({
   const profile = partyRows ? partyProfile(partyRows, d0) : null;
   // Vencidas que ficaram para trás em meses anteriores: aviso no topo para não se perderem.
   const lateBefore = pending.filter(
-    (p) => p.type === type && p.dueDate < from && !(consolidated && p.transferId) && (!f.party || p.counterpart === f.party),
+    (p) => p.type === type && p.dueDate < from && p.dueDate < d0 && !(consolidated && p.transferId) && (!f.party || p.counterpart === f.party),
   );
 
   // Totais e categorias usam o mês inteiro com os filtros de categoria/conta/busca, mas sem o de situação
@@ -441,6 +442,12 @@ export async function BillsView({
                                 </button>
                               </form>
                             )}
+                            {canLaunch && !r.transferId && !r.partialOf && (
+                              <Link className="btn sm icon" href={`/empresa/${c.slug}/lancamentos/${r.id}`} title="Editar esta conta" aria-label="Editar">
+                                ✎
+                              </Link>
+                            )}
+                            {canLaunch && !r.transferId && !r.partialOf && <DeleteButton item={r} />}
                           </span>
                         </div>
                       </div>

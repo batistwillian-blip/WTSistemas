@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { PageHead } from "@/components/PageHead";
-import { deleteTransaction, setPaid } from "@/app/actions/lancamentos";
-import { ConfirmButton } from "@/components/FormStatus";
+import { setPaid } from "@/app/actions/lancamentos";
+import { DeleteButton } from "@/components/DeleteButton";
 import { Money } from "@/components/Money";
 import { SettleButton } from "@/components/SettleButton";
 import { installmentLabel } from "@/lib/billing";
@@ -40,7 +40,6 @@ export default async function LancamentosPage({ params, searchParams }: { params
   const paidIn = realized.filter((r) => r.tx.type === "entrada").reduce((s, r) => s + r.tx.amount, 0);
   const paidOut = realized.filter((r) => r.tx.type === "saida").reduce((s, r) => s + r.tx.amount, 0);
   const canLaunch = roleAllows(role, "lancar");
-  const canManage = roleAllows(role, "gerir");
   const d0 = today();
 
   return (
@@ -127,7 +126,7 @@ export default async function LancamentosPage({ params, searchParams }: { params
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ tx, accountName, categoryName }) => {
+              {rows.map(({ tx, accountName, categoryName, seriesOpen, seriesOpenFrom }) => {
                 const manual = tx.source === "manual";
                 const overdue = !tx.paidAt && tx.dueDate < d0;
                 return (
@@ -190,26 +189,8 @@ export default async function LancamentosPage({ params, searchParams }: { params
                             )}
                           </form>
                         )}
-                        {canManage && manual && !tx.transferId && (
-                          <form action={deleteTransaction}>
-                            <input type="hidden" name="id" value={tx.id} />
-                            <ConfirmButton message="Excluir este lançamento? A exclusão fica registrada no log.">Excluir</ConfirmButton>
-                          </form>
-                        )}
-                        {canManage && manual && !tx.transferId && tx.recurrenceGroup && !tx.paidAt && (
-                          <form action={deleteTransaction}>
-                            <input type="hidden" name="id" value={tx.id} />
-                            <input type="hidden" name="scope" value="futuras" />
-                            <ConfirmButton
-                              message={
-                                tx.openEnded
-                                  ? "Encerrar esta conta fixa? Este e os próximos meses em aberto serão excluídos e o sistema para de gerar novos."
-                                  : "Excluir este e os próximos lançamentos pendentes desta recorrência?"
-                              }
-                            >
-                              {tx.openEnded ? "Encerrar conta fixa" : "Excluir próximos"}
-                            </ConfirmButton>
-                          </form>
+                        {canLaunch && manual && !tx.transferId && !(tx.partialOf && tx.paidAt) && (
+                          <DeleteButton item={{ ...tx, seriesOpen, seriesOpenFrom }} />
                         )}
                       </div>
                     </td>

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { saveTransaction } from "@/app/actions/lancamentos";
-import { ActionForm } from "@/components/ActionForm";
+import { ActionForm, type Review } from "@/components/ActionForm";
 import { Submit } from "@/components/FormStatus";
 import { planSeries, installmentLabel } from "@/lib/billing";
 import { formatDate, formatMoney, parseMoney } from "@/lib/format";
@@ -101,8 +101,75 @@ export function TransactionForm({
       return next;
     });
 
+  // Resumo antes de salvar: "Deseja lançar a conta a receber…?" com tudo o que será gravado.
+  const review = (fd: FormData): Review => {
+    const get = (k: string) => String(fd.get(k) ?? "").trim();
+    const kind = entrada ? "conta a receber" : "conta a pagar";
+    const value = parseMoney(get("amount"));
+    const paidAt = get("paidAt");
+    const doc = get("document");
+    const comp = get("competence") || get("dueDate").slice(0, 7);
+    const account = accounts.find((a) => String(a.id) === get("accountId"))?.name ?? "—";
+    const category = categories.find((c) => String(c.id) === get("categoryId"))?.name ?? "Sem categoria";
+    const who = get("counterpart");
+    const series = isNew && mode !== "unica" && preview ? preview : null;
+    const scope = get("scope");
+    const lines: [string, React.ReactNode][] = [
+      ["Descrição", <b key="d">{get("description")}</b>],
+      [entrada ? "Cliente" : "Fornecedor", who ? `${who}${partyMatch ? ` (${partyMatch.code})` : " · novo cadastro"}` : "—"],
+      [
+        series ? (mode === "parcelada" ? "Parcelas" : "Contas") : "Valor",
+        series ? (
+          <span key="v">
+            <b>{series.length}</b>
+            {openEnded ? " (e segue todo mês)" : ""} somando <b className="num">{formatMoney(sum)}</b>
+          </span>
+        ) : (
+          <b key="v" className="num">
+            {value === null ? "—" : formatMoney(value)}
+          </b>
+        ),
+      ],
+      [series ? "1º vencimento" : "Vencimento", formatDate(get("dueDate"))],
+      ["Competência", comp ? `${comp.slice(5, 7)}/${comp.slice(0, 4)}` : "—"],
+      ["Conta", account],
+      ["Categoria", category],
+      ["Nº do documento", doc || (isNew ? `Automático${nextDocument ? ` (${nextDocument})` : ""}` : "—")],
+      ["Situação", paidAt ? `Já ${entrada ? "recebida" : "paga"} em ${formatDate(paidAt)}` : "Em aberto"],
+    ];
+    if (get("notes")) lines.push(["Observações", get("notes")]);
+    if (!isNew && initial.recurrence) lines.push(["Aplicar em", scope === "proximas" ? "Esta e as próximas em aberto" : "Só esta"]);
+    return {
+      title: isNew ? `Deseja lançar ${series ? (mode === "parcelada" ? "esta conta parcelada" : "esta conta fixa") : `a ${kind}`}?` : `Deseja salvar as alterações da ${kind}?`,
+      confirm: isNew ? "Sim, lançar" : "Sim, salvar",
+      body: (
+        <>
+          <dl className="review-list">
+            {lines.map(([k, v]) => (
+              <div key={k}>
+                <dt>{k}</dt>
+                <dd>{v}</dd>
+              </div>
+            ))}
+          </dl>
+          {series && (
+            <div className="review-plan">
+              {series.map((r, i) => (
+                <div key={i}>
+                  <span className="num">{installmentLabel(r) ?? i + 1}</span>
+                  <span>{formatDate(r.dueDate)}</span>
+                  <b className="num">{formatMoney(r.amount)}</b>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      ),
+    };
+  };
+
   return (
-    <ActionForm action={saveTransaction} className="form card" resetOnSuccess={isNew}>
+    <ActionForm action={saveTransaction} className="form card" resetOnSuccess={isNew} review={review}>
       <input type="hidden" name="companyId" value={companyId} />
       {initial.id && <input type="hidden" name="id" value={initial.id} />}
       <div className="tabs">

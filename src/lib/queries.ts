@@ -119,6 +119,8 @@ export async function listTransactions(companyId: number, f: TxFilters) {
       tx: transactions,
       accountName: accounts.name,
       categoryName: categories.name,
+      seriesOpen,
+      seriesOpenFrom,
     })
     .from(transactions)
     .innerJoin(accounts, eq(accounts.id, transactions.accountId))
@@ -179,6 +181,19 @@ export async function allCompanies() {
  * Contas a pagar ou a receber num intervalo, pela data escolhida (vencimento, pagamento ou competência), pagas ou não.
  * Inclui as pagas do CH só para consulta (marcadas), sem "Vendas do dia" e, no consolidado, sem transferências.
  */
+/** Quantas contas em aberto a série (fixa/parcelada) tem no total e desta em diante: alimenta o "Excluir" com escolha. */
+const seriesOpen = sql<number>`(select count(*)::int from lancamentos s where s.grupo_recorrencia = ${transactions.recurrenceGroup} and s.excluido_em is null and s.pago_em is null and s.parcial_de is null)`;
+const seriesOpenFrom = sql<number>`(select count(*)::int from lancamentos s where s.grupo_recorrencia = ${transactions.recurrenceGroup} and s.excluido_em is null and s.pago_em is null and s.parcial_de is null and s.vencimento >= ${transactions.dueDate})`;
+
+/** Dados para o botão Excluir de uma conta: série, em aberto e se tem pagamento parcial. */
+export async function deleteInfo(id: number) {
+  const [row] = await db
+    .select({ seriesOpen, seriesOpenFrom, openEnded: transactions.openEnded, recurrenceGroup: transactions.recurrenceGroup })
+    .from(transactions)
+    .where(eq(transactions.id, id));
+  return row ?? null;
+}
+
 export async function billsInRange(
   companyIds: number[],
   type: "entrada" | "saida",
@@ -221,6 +236,10 @@ export async function billsInRange(
       installments: transactions.installments,
       document: transactions.document,
       parentPaid: sql<boolean>`exists (select 1 from lancamentos o where o.id = ${transactions.partialOf} and o.pago_em is not null and o.excluido_em is null)`,
+      recurrenceGroup: transactions.recurrenceGroup,
+      openEnded: transactions.openEnded,
+      seriesOpen,
+      seriesOpenFrom,
     })
     .from(transactions)
     .innerJoin(accounts, eq(accounts.id, transactions.accountId))

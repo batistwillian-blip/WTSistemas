@@ -3,7 +3,8 @@ import { PageHead } from "@/components/PageHead";
 import { notFound } from "next/navigation";
 import { requireCompany } from "@/lib/access";
 import { formatDate, today } from "@/lib/format";
-import { getAccounts, getCategories, getPeople, getTransaction } from "@/lib/queries";
+import { deleteInfo, getAccounts, getCategories, getPeople, getTransaction } from "@/lib/queries";
+import { DeleteButton } from "@/components/DeleteButton";
 import { roleAllows } from "@/lib/roles";
 import { installmentLabel } from "@/lib/billing";
 import { TransactionForm } from "../TransactionForm";
@@ -14,41 +15,66 @@ export default async function EditarLancamentoPage({ params }: { params: Promise
   const tx = /^\d+$/.test(id) ? await getTransaction(Number(id)) : null;
   if (!tx || tx.companyId !== company.id) notFound();
   const editable = roleAllows(role, "lancar") && tx.source === "manual" && !tx.transferId;
-  const [accounts, categories, people] = await Promise.all([getAccounts([company.id]), getCategories(company.id), getPeople(company.id)]);
+  const [accounts, categories, people, del] = await Promise.all([
+    getAccounts([company.id]),
+    getCategories(company.id),
+    getPeople(company.id),
+    deleteInfo(tx.id),
+  ]);
+  const back = `/empresa/${slug}/${tx.type === "entrada" ? "receber" : "pagar"}`;
   return (
     <div className="stack">
-      <PageHead context={company.name} color={company.color} title={`${editable ? "Editar lançamento" : "Lançamento"}${tx.installment ? ` · parcela ${installmentLabel(tx)}` : ""}`} subtitle={<Link href={`/empresa/${slug}/lancamentos`}>← Voltar para lançamentos</Link>} />
+      <PageHead
+        context={company.name}
+        color={company.color}
+        title={`${editable ? "Editar lançamento" : "Lançamento"}${tx.installment ? ` · parcela ${installmentLabel(tx)}` : ""}`}
+        subtitle={<Link href={`/empresa/${slug}/lancamentos`}>← Voltar para lançamentos</Link>}
+      />
       {tx.source === "chserver" && (
         <div className="alert info">Importado do CHServer. Alterações devem ser feitas lá; a próxima sincronização atualiza aqui.</div>
       )}
       {tx.transferId && <div className="alert info">Faz parte de uma transferência entre empresas. Altere em Entre empresas.</div>}
       {editable ? (
-        <TransactionForm
-          companyId={company.id}
-          accounts={accounts.filter((a) => a.active || a.id === tx.accountId)}
-          categories={categories.filter((c) => c.active || c.id === tx.categoryId)}
-          today={today()}
-          people={people}
-          categoriesHref={roleAllows(role, "gerir") ? `/empresa/${slug}/ajustes` : undefined}
-          initial={{
-            id: tx.id,
-            type: tx.type,
-            description: tx.description,
-            amount: (tx.amount / 100).toFixed(2).replace(".", ","),
-            dueDate: tx.dueDate,
-            paidAt: tx.paidAt,
-            accountId: tx.accountId,
-            categoryId: tx.categoryId,
-            counterpart: tx.counterpart ?? "",
-            notes: tx.notes ?? "",
-            recurrence: tx.recurrenceGroup ? (tx.recurrence ?? "mensal") : null,
-            openEnded: tx.openEnded,
-            installment: tx.installment,
-            installments: tx.installments,
-            document: tx.document,
-            competence: tx.competence,
-          }}
-        />
+        <>
+          <TransactionForm
+            companyId={company.id}
+            accounts={accounts.filter((a) => a.active || a.id === tx.accountId)}
+            categories={categories.filter((c) => c.active || c.id === tx.categoryId)}
+            today={today()}
+            people={people}
+            categoriesHref={roleAllows(role, "gerir") ? `/empresa/${slug}/ajustes` : undefined}
+            initial={{
+              id: tx.id,
+              type: tx.type,
+              description: tx.description,
+              amount: (tx.amount / 100).toFixed(2).replace(".", ","),
+              dueDate: tx.dueDate,
+              paidAt: tx.paidAt,
+              accountId: tx.accountId,
+              categoryId: tx.categoryId,
+              counterpart: tx.counterpart ?? "",
+              notes: tx.notes ?? "",
+              recurrence: tx.recurrenceGroup ? (tx.recurrence ?? "mensal") : null,
+              openEnded: tx.openEnded,
+              installment: tx.installment,
+              installments: tx.installments,
+              document: tx.document,
+              competence: tx.competence,
+            }}
+          />
+          {!(tx.partialOf && tx.paidAt) && (
+            <div className="card danger-zone">
+              <div>
+                <b>Lançou por engano?</b>
+                <p className="small muted" style={{ margin: "2px 0 0" }}>
+                  Exclua esta conta{tx.recurrenceGroup ? " (ou esta e as próximas parcelas em aberto)" : ""}. A exclusão pede confirmação e fica registrada no
+                  histórico.
+                </p>
+              </div>
+              <DeleteButton item={{ ...tx, seriesOpen: del?.seriesOpen, seriesOpenFrom: del?.seriesOpenFrom }} className="btn danger-solid" redirectTo={back} />
+            </div>
+          )}
+        </>
       ) : (
         <div className="card">
           <p>
