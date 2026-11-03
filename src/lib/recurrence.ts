@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { transactions } from "@/db/schema";
 import { logChange } from "./audit";
 import { addMonths, monthStart, today } from "./format";
-import { missingMonths, OPEN_ENDED_MONTHS } from "./billing";
+import { monthlyAfter, OPEN_ENDED_MONTHS } from "./billing";
 
 /**
  * Contas fixas "sem data de fim": mantém sempre os próximos meses gerados.
@@ -35,16 +35,20 @@ export async function extendOpenEnded(companyIds: number[]) {
         .select({ last: sql<string>`max(${transactions.dueDate})` })
         .from(transactions)
         .where(eq(transactions.recurrenceGroup, g.group));
-      const dates = missingMonths(g.first, cur.last, horizon);
-      if (dates.length === 0) continue;
-      // Modelo: a ocorrência mais recente ainda ativa (pega valor e categoria atualizados).
-      const [model] = await tx
+      // Modelo: a ocorrência mais recente ainda ativa (pega valor, categoria e dia de vencimento atualizados).
+      const recent = await tx
         .select()
         .from(transactions)
         .where(and(eq(transactions.recurrenceGroup, g.group), isNull(transactions.deletedAt), isNull(transactions.partialOf)))
         .orderBy(desc(transactions.dueDate))
-        .limit(1);
+        .limit(3);
+      const model = recent[0];
       if (!model || !model.openEnded) continue;
+      // Dia do mês da série: o das ocorrências mais recentes (se alguém mudou de dia 3 para dia 7, segue no 7).
+      // O maior dos últimos evita que um dia 31 encolhido em fevereiro vire dia 28 para sempre.
+      const day = Math.max(...recent.map((r) => Number(r.dueDate.slice(8, 10))));
+      const dates = monthlyAfter(cur.last, day, horizon);
+      if (dates.length === 0) continue;
       const [{ n }] = await tx
         .select({ n: sql<number>`count(*)::int` })
         .from(transactions)

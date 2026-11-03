@@ -8,11 +8,11 @@ import { db } from "@/db";
 import { accounts, categories, transactions } from "@/db/schema";
 import { requireCompanyId } from "@/lib/access";
 import { logChange } from "@/lib/audit";
-import { competenceOf, parsePlan, planSeries, settle, shiftCompetence, OPEN_ENDED_MONTHS, SYSTEM_DOC, type SeriesMode } from "@/lib/billing";
+import { competenceOf, isMonthlySeries, moveSeriesDate, parsePlan, planSeries, settle, shiftCompetence, OPEN_ENDED_MONTHS, SYSTEM_DOC, type SeriesMode } from "@/lib/billing";
 import { nextDocument } from "@/lib/documents";
 import { findOrCreatePerson } from "@/lib/people";
 import { personKindOf } from "@/lib/people-sql";
-import { today } from "@/lib/format";
+import { addMonths, today } from "@/lib/format";
 import { guard, int, isoDate, money, optStr, str, UserError, type ActionState } from "@/lib/form";
 
 async function loadEditable(id: number) {
@@ -100,35 +100,53 @@ export async function saveTransaction(_prev: ActionState, fd: FormData): Promise
         .where(eq(transactions.id, id))
         .returning();
       await logChange({ user, companyId, action: "editar", entity: "lancamento", entityId: id, before, after });
-      // "Esta e as próximas": leva valor, conta, categoria e fornecedor para as ocorrências seguintes ainda em aberto.
+      // "Esta e as próximas": leva valor, conta, categoria, fornecedor e o dia de vencimento para as ocorrências seguintes ainda em aberto.
       if (str(fd, "scope") === "proximas" && before.recurrenceGroup) {
-        const next = await db
-          .update(transactions)
-          .set({
-            amount: values.amount,
-            accountId: values.accountId,
-            categoryId: values.categoryId,
-            counterpart: values.counterpart,
-            personId: values.personId,
-            description: values.description,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(transactions.recurrenceGroup, before.recurrenceGroup),
-              gte(transactions.dueDate, before.dueDate),
-              isNull(transactions.paidAt),
-              isNull(transactions.deletedAt),
-              isNull(transactions.originalAmount),
-              sql`${transactions.id} <> ${id}`,
-            ),
-          )
-          .returning({ id: transactions.id });
-        if (next.length) {
-          await logChange({ user, companyId, action: "editar", entity: "lancamento", entityId: next.map((n) => n.id).join(","), after: { ...values, aplicadoAsProximas: next.length } });
-        }
+        const group = before.recurrenceGroup;
+        const series = await db
+          .select({ id: transactions.id, dueDate: transactions.dueDate, competence: transactions.competence, paidAt: transactions.paidAt, originalAmount: transactions.originalAmount })
+          .from(transactions)
+          .where(and(eq(transactions.recurrenceGroup, group), isNull(transactions.deletedAt), isNull(transactions.partialOf)));
+        const next = series.filter((t) => t.id !== id && t.dueDate >= before.dueDate && !t.paidAt && t.originalAmount === null);
+        const moved = dueDate !== before.dueDate;
+        const monthly = isMonthlySeries(series.map((t) => t.dueDate).concat(before.dueDate).filter((d, i, a) => a.indexOf(d) === i));
+        const months = (Number(dueDate.slice(0, 4)) - Number(before.dueDate.slice(0, 4))) * 12 + Number(dueDate.slice(5, 7)) - Number(before.dueDate.slice(5, 7));
+        await db.transaction(async (tx) => {
+          for (const t of next) {
+            const newDue = moved ? moveSeriesDate(t.dueDate, before.dueDate, dueDate, monthly) : t.dueDate;
+            await tx
+              .update(transactions)
+              .set({
+                amount: values.amount,
+                accountId: values.accountId,
+                categoryId: values.categoryId,
+                counterpart: values.counterpart,
+                personId: values.personId,
+                description: values.description,
+                dueDate: newDue,
+                competence: moved && months !== 0 && t.competence ? addMonths(t.competence, months) : t.competence,
+                updatedAt: new Date(),
+              })
+              .where(eq(transactions.id, t.id));
+          }
+          if (next.length) {
+            await logChange(
+              {
+                user,
+                companyId,
+                action: "editar",
+                entity: "lancamento",
+                entityId: next.map((n) => n.id).join(","),
+                after: { ...values, aplicadoAsProximas: next.length, vencimentoDe: moved ? before.dueDate : undefined },
+              },
+              tx,
+            );
+          }
+        });
         revalidatePath("/", "layout");
-        return { ok: `Lançamento atualizado, junto com ${next.length} ${next.length === 1 ? "ocorrência seguinte" : "ocorrências seguintes"}.` };
+        return {
+          ok: `Lançamento atualizado, junto com ${next.length} ${next.length === 1 ? "ocorrência seguinte" : "ocorrências seguintes"}${moved && next.length ? ` (vencimentos ajustados)` : ""}.`,
+        };
       }
     } else {
       const rawMode = str(fd, "mode");

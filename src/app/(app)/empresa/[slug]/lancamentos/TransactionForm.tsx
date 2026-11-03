@@ -165,7 +165,12 @@ function TransactionFormInner({
       ["Situação", paidAt ? `Já ${entrada ? "recebida" : "paga"} em ${formatDate(paidAt)}` : "Em aberto"],
     ];
     if (get("notes")) lines.push(["Observações", get("notes")]);
-    if (!isNew && initial.recurrence) lines.push(["Aplicar em", scope === "proximas" ? "Esta e as próximas em aberto" : "Só esta"]);
+    if (!isNew && initial.recurrence) lines.push([
+        "Aplicar em",
+        scope === "proximas"
+          ? `Esta e as próximas em aberto${get("dueDate") !== initial.dueDate ? ` (todas passam a vencer no dia ${get("dueDate").slice(8, 10)})` : ""}`
+          : "Só esta",
+      ]);
     return {
       title: isNew ? `Deseja lançar ${series ? (mode === "parcelada" ? "esta conta parcelada" : "esta conta fixa") : `a ${kind}`}?` : `Deseja salvar as alterações da ${kind}?`,
       confirm: isNew ? "Sim, lançar" : "Sim, salvar",
@@ -524,6 +529,10 @@ function TransactionFormInner({
               <option value="esta">Só esta{initial.installment ? ` (${installmentLabel({ installment: initial.installment, installments: initial.installments ?? null })})` : ""}</option>
               <option value="proximas">Esta e as próximas em aberto</option>
             </select>
+            <span className="small muted" style={{ fontWeight: 400 }}>
+              &quot;Esta e as próximas&quot; leva valor, conta, categoria, {entrada ? "cliente" : "fornecedor"} e o dia do vencimento (ex.: do dia 3 para o dia 7)
+              {initial.openEnded ? "; os meses gerados depois já vêm com a correção" : ""}. As já {entrada ? "recebidas" : "pagas"} não mudam.
+            </span>
           </label>
         </div>
       )}

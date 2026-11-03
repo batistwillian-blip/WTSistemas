@@ -135,3 +135,35 @@ export function missingMonths(firstDue: string, lastDue: string, horizon: string
   }
   return out;
 }
+
+const lastDayOf = (ym: string) => Number(addDays(addMonths(ym + "-01", 1), -1).slice(8, 10));
+const withDay = (ym: string, day: number) => `${ym}-${String(Math.min(day, lastDayOf(ym))).padStart(2, "0")}`;
+const monthDiff = (a: string, b: string) => (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12 + Number(b.slice(5, 7)) - Number(a.slice(5, 7));
+
+/** A série vence todo mês no mesmo dia (dias 29–31 caem no último dia dos meses curtos)? Senão é a cada N dias. */
+export function isMonthlySeries(dates: string[]): boolean {
+  if (dates.length < 2) return true;
+  const day = Math.max(...dates.map((d) => Number(d.slice(8, 10))));
+  return dates.every((d) => Number(d.slice(8, 10)) === Math.min(day, lastDayOf(d.slice(0, 7))));
+}
+
+/**
+ * Leva a mudança de vencimento de uma ocorrência (de `oldDue` para `newDue`) para outra da mesma série.
+ * Mensal: mesmo deslocamento de meses e o novo dia do mês (ex.: todo dia 3 → todo dia 7). A cada N dias: mesmo nº de dias.
+ */
+export function moveSeriesDate(due: string, oldDue: string, newDue: string, monthly: boolean): string {
+  if (!monthly) return addDays(due, Math.round((Date.parse(newDue) - Date.parse(oldDue)) / 86_400_000));
+  const ym = addMonths(due.slice(0, 8) + "01", monthDiff(oldDue, newDue)).slice(0, 7);
+  return withDay(ym, Number(newDue.slice(8, 10)));
+}
+
+/** Próximos vencimentos mensais depois de `lastDue`, no dia `day` (ajustado ao fim dos meses curtos), até `horizon`. */
+export function monthlyAfter(lastDue: string, day: number, horizon: string): string[] {
+  const out: string[] = [];
+  for (let i = 1; i < 600; i++) {
+    const d = withDay(addMonths(lastDue.slice(0, 8) + "01", i).slice(0, 7), day);
+    if (d > horizon) break;
+    out.push(d);
+  }
+  return out;
+}

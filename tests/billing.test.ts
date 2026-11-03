@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { competenceOf, installmentLabel, missingMonths, parsePlan, planSeries, settle, splitInstallments, SYSTEM_DOC, systemDocument } from "@/lib/billing";
+import { competenceOf, installmentLabel, missingMonths, parsePlan, planSeries, settle, splitInstallments, SYSTEM_DOC, systemDocument, isMonthlySeries, moveSeriesDate, monthlyAfter } from "@/lib/billing";
 
 describe("parcelas", () => {
   it("divide o total e põe a sobra na primeira", () => {
@@ -120,5 +120,25 @@ describe("previsão por mês e versículo", () => {
     expect(verseOfDay("2026-10-30")).not.toEqual(verseOfDay("2026-10-31"));
     const seen = new Set(Array.from({ length: VERSES.length }, (_, i) => verseOfDay(`2026-01-${String(1 + (i % 28)).padStart(2, "0")}`).ref));
     expect(seen.size).toBeGreaterThan(20);
+  });
+});
+
+describe("mudar o vencimento de uma série", () => {
+  it("reconhece série mensal, inclusive dia 31 encolhido nos meses curtos", () => {
+    expect(isMonthlySeries(["2026-11-03", "2026-12-03", "2027-01-03"])).toBe(true);
+    expect(isMonthlySeries(["2027-01-31", "2027-02-28", "2027-03-31"])).toBe(true);
+    expect(isMonthlySeries(["2026-11-01", "2026-11-16", "2026-12-01"])).toBe(false);
+  });
+  it("mensal: todo dia 3 passa a ser todo dia 7", () => {
+    expect(moveSeriesDate("2027-02-03", "2026-11-03", "2026-11-07", true)).toBe("2027-02-07");
+    expect(moveSeriesDate("2027-02-03", "2026-11-03", "2026-11-30", true)).toBe("2027-02-28");
+    expect(moveSeriesDate("2027-02-03", "2026-11-03", "2026-12-03", true)).toBe("2027-03-03");
+  });
+  it("a cada N dias: desloca o mesmo número de dias", () => {
+    expect(moveSeriesDate("2026-12-01", "2026-11-16", "2026-11-18", false)).toBe("2026-12-03");
+  });
+  it("conta sem fim gera os próximos meses no dia novo", () => {
+    expect(monthlyAfter("2027-10-07", 7, "2028-01-31")).toEqual(["2027-11-07", "2027-12-07", "2028-01-07"]);
+    expect(monthlyAfter("2027-01-31", 31, "2027-04-30")).toEqual(["2027-02-28", "2027-03-31", "2027-04-30"]);
   });
 });
