@@ -29,7 +29,9 @@ export function ActionForm({
   const [state, run, pending] = useActionState(action, undefined);
   const ref = useRef<HTMLFormElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
-  const [asking, setAsking] = useState<{ fd: FormData; review: Review } | null>(null);
+  const [asking, setAsking] = useState<FormData | null>(null);
+  // Recalculado a cada render: o resumo pode ter campos editáveis (ex.: parcelas) ligados ao estado do formulário.
+  const current = asking && review ? review(asking) : null;
   useEffect(() => {
     if (resetOnSuccess && state?.ok) ref.current?.reset();
   }, [state, resetOnSuccess]);
@@ -48,8 +50,7 @@ export function ActionForm({
         onSubmit={(e) => {
           e.preventDefault();
           const fd = new FormData(e.currentTarget);
-          const r = review?.(fd);
-          if (r) setAsking({ fd, review: r });
+          if (review?.(fd)) setAsking(fd);
           else startTransition(() => run(fd));
         }}
       >
@@ -60,10 +61,10 @@ export function ActionForm({
       </form>
       {review && (
         <dialog ref={dialog} className="dialog review" onClose={() => setAsking(null)} onClick={(e) => e.target === dialog.current && close()}>
-          {asking && (
+          {current && (
             <div className="form">
-              <h2 style={{ margin: 0 }}>{asking.review.title}</h2>
-              {asking.review.body}
+              <h2 style={{ margin: 0 }}>{current.title}</h2>
+              {current.body}
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                 <button type="button" className="btn" onClick={close}>
                   Não, voltar e corrigir
@@ -73,12 +74,13 @@ export function ActionForm({
                   className="btn primary"
                   autoFocus
                   onClick={() => {
-                    const fd = asking.fd;
+                    // Lê o formulário de novo: pega os ajustes feitos no próprio resumo.
+                    const fd = new FormData(ref.current!);
                     close();
                     startTransition(() => run(fd));
                   }}
                 >
-                  {asking.review.confirm}
+                  {current.confirm}
                 </button>
               </div>
             </div>

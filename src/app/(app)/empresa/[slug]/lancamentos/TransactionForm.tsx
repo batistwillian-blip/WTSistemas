@@ -152,16 +152,57 @@ export function TransactionForm({
               </div>
             ))}
           </dl>
-          {series && (
-            <div className="review-plan">
-              {series.map((r, i) => (
-                <div key={i}>
-                  <span className="num">{installmentLabel(r) ?? i + 1}</span>
-                  <span>{formatDate(r.dueDate)}</span>
-                  <b className="num">{formatMoney(r.amount)}</b>
-                </div>
-              ))}
-            </div>
+          {series && rows && !openEnded ? (
+            <>
+              <p className="small muted" style={{ margin: 0 }}>
+                Alguma parcela diferente? Ajuste a data ou o valor aqui mesmo; o total atualiza na hora.
+              </p>
+              <div className="review-plan edit">
+                {rows.map((r, i) => (
+                  <div key={i} className={r.edited ? "edited" : undefined}>
+                    <span className="num">
+                      {r.n}/{rows.length}
+                    </span>
+                    <input type="date" aria-label={`Vencimento da parcela ${r.n}`} value={r.dueDate} onChange={(e) => setEdit(i, { dueDate: e.target.value })} />
+                    <input inputMode="decimal" aria-label={`Valor da parcela ${r.n}`} value={r.amount} onChange={(e) => setEdit(i, { amount: e.target.value })} />
+                    {i < rows.length - 1 ? (
+                      <button type="button" className="btn sm icon" title="Usar este valor em todas as parcelas seguintes" onClick={() => repeatDown(i)}>
+                        ↓
+                      </button>
+                    ) : (
+                      <span />
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="plan-foot">
+                <span>
+                  Total: <b className="num">{formatMoney(sum)}</b>
+                  {mode === "parcelada" && amountIs === "total" && sum !== cents && (
+                    <span className="badge amber" style={{ marginLeft: 8 }}>
+                      diferente do informado ({formatMoney(cents)}): vale a soma
+                    </span>
+                  )}
+                </span>
+                {editedCount > 0 && (
+                  <button type="button" className="btn sm" onClick={() => setEdits({})}>
+                    Desfazer ajustes
+                  </button>
+                )}
+              </div>
+            </>
+          ) : (
+            series && (
+              <div className="review-plan">
+                {series.map((r, i) => (
+                  <div key={i}>
+                    <span className="num">{installmentLabel(r) ?? i + 1}</span>
+                    <span>{formatDate(r.dueDate)}</span>
+                    <b className="num">{formatMoney(r.amount)}</b>
+                  </div>
+                ))}
+              </div>
+            )
           )}
         </>
       ),

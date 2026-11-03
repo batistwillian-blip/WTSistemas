@@ -371,3 +371,8 @@ details.box[open] summary { margin-bottom: 12px; }
 .review-plan > div { display: grid; grid-template-columns: 60px 1fr auto; gap: 10px; padding: 4px 0; border-top: 1px dashed var(--line); }
 .review-plan > div:first-child { border-top: 0; }
 @media (max-width: 520px) { .review-list > div { grid-template-columns: 1fr; gap: 2px; } }
+.review-plan.edit { max-height: 300px; }
+.review-plan.edit > div { grid-template-columns: 44px 1fr 1fr 34px; align-items: center; }
+.review-plan.edit input { padding: 5px 8px; font-size: 13px; }
+.review-plan.edit > div.edited input { border-color: var(--amber, #c98a00); }
+@media (max-width: 520px) { .review-plan.edit { padding: 4px 8px; } .review-plan.edit > div { grid-template-columns: 30px 1fr 0.8fr 30px; gap: 6px; } .review-plan.edit input { padding: 5px 4px; font-size: 12px; } }
