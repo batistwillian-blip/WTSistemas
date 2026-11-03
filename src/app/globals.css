@@ -376,3 +376,6 @@ details.box[open] summary { margin-bottom: 12px; }
 .review-plan.edit input { padding: 5px 8px; font-size: 13px; }
 .review-plan.edit > div.edited input { border-color: var(--amber, #c98a00); }
 @media (max-width: 520px) { .review-plan.edit { padding: 4px 8px; } .review-plan.edit > div { grid-template-columns: 30px 1fr 0.8fr 30px; gap: 6px; } .review-plan.edit input { padding: 5px 4px; font-size: 12px; } }
+.saved { display: grid; gap: 14px; justify-items: start; }
+.saved-ok { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--in, #1f8a4c); color: #fff; font-weight: 700; font-size: 20px; }
+.saved-actions { display: flex; gap: 8px; flex-wrap: wrap; }

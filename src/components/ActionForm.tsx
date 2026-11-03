@@ -19,12 +19,15 @@ export function ActionForm({
   className = "form",
   resetOnSuccess = false,
   review,
+  success,
 }: {
   action: (prev: ActionState, fd: FormData) => Promise<ActionState>;
   children: React.ReactNode;
   className?: string;
   resetOnSuccess?: boolean;
   review?: (fd: FormData) => Review | null;
+  /** Depois de salvar com sucesso, troca o formulário por esta tela (ex.: "Novo lançamento" / "Voltar"). */
+  success?: (message: string) => React.ReactNode;
 }) {
   const [state, run, pending] = useActionState(action, undefined);
   const ref = useRef<HTMLFormElement>(null);
@@ -42,6 +45,7 @@ export function ActionForm({
     dialog.current?.close();
     setAsking(null);
   };
+  if (success && state?.ok) return <>{success(state.ok)}</>;
   return (
     <>
       <form

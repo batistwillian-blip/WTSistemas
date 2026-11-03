@@ -28,6 +28,7 @@ export default async function NovoLancamentoPage({ params, searchParams }: { par
         categories={categories.filter((c) => c.active)}
         today={d0}
         nextDocument={nextDoc}
+        companyHref={`/empresa/${slug}`}
         people={people}
         peopleHref={`/empresa/${slug}/pessoas/nova?tipo=${tipo === "entrada" ? "cliente" : "fornecedor"}`}
         categoriesHref={roleAllows(role, "gerir") ? `/empresa/${slug}/ajustes` : undefined}

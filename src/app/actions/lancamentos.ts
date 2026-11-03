@@ -32,6 +32,7 @@ export async function saveTransaction(_prev: ActionState, fd: FormData): Promise
     const { user } = await requireCompanyId(companyId, "lancar");
 
     const id = int(fd, "id");
+    let savedMsg = "Lançamento salvo.";
     const type = str(fd, "type");
     if (type !== "entrada" && type !== "saida") throw new UserError("Escolha entrada ou saída.");
     const description = str(fd, "description", 200);
@@ -177,6 +178,7 @@ export async function saveTransaction(_prev: ActionState, fd: FormData): Promise
         createdBy: user.id,
       }));
       const repeat = rows.length;
+      savedMsg = `${description} · Doc ${document}${repeat > 1 ? ` · ${repeat} ${mode === "parcelada" ? "parcelas" : "meses"}` : ""}.`;
       const created = await db.insert(transactions).values(rows).returning();
       await logChange({
         user,
@@ -188,7 +190,7 @@ export async function saveTransaction(_prev: ActionState, fd: FormData): Promise
       });
     }
     revalidatePath("/", "layout");
-    return { ok: id ? "Lançamento atualizado." : "Lançamento salvo." };
+    return { ok: id ? "Lançamento atualizado." : savedMsg };
   });
 }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { saveTransaction } from "@/app/actions/lancamentos";
 import { ActionForm, type Review } from "@/components/ActionForm";
@@ -32,17 +33,7 @@ export type TxInitial = {
   installments?: number | null;
 };
 
-export function TransactionForm({
-  companyId,
-  accounts,
-  categories,
-  initial,
-  today,
-  categoriesHref,
-  nextDocument,
-  people = [],
-  peopleHref,
-}: {
+type FormProps = {
   companyId: number;
   accounts: Opt[];
   categories: Cat[];
@@ -55,7 +46,43 @@ export function TransactionForm({
   /** Cadastro de clientes e fornecedores da empresa, para escolher pelo nome. */
   people?: { kind: string; code: string; name: string; active: boolean }[];
   peopleHref?: string;
-}) {
+  /** Raiz da empresa ("/empresa/slug"), para os atalhos depois de salvar. */
+  companyHref?: string;
+};
+
+/**
+ * Formulário de lançamento. Num lançamento novo, depois de salvar mostra "Novo lançamento" (formulário limpo,
+ * mesmo tipo) e "Voltar para contas a receber/pagar", em vez de ficar com os dados anteriores na tela.
+ */
+export function TransactionForm(props: FormProps) {
+  const [round, setRound] = useState(0);
+  const [type, setType] = useState(props.initial.type);
+  return (
+    <TransactionFormInner
+      key={round}
+      {...props}
+      initial={props.initial.id ? props.initial : { ...props.initial, type }}
+      onNew={(t) => {
+        setType(t);
+        setRound((r) => r + 1);
+      }}
+    />
+  );
+}
+
+function TransactionFormInner({
+  companyId,
+  accounts,
+  categories,
+  initial,
+  today,
+  categoriesHref,
+  nextDocument,
+  people = [],
+  peopleHref,
+  companyHref,
+  onNew,
+}: FormProps & { onNew: (type: "entrada" | "saida") => void}) {
   const isNew = !initial.id;
   const [type, setType] = useState(initial.type);
   const [mode, setMode] = useState<Mode>("unica");
@@ -209,8 +236,38 @@ export function TransactionForm({
     };
   };
 
+  const success = (message: string) => {
+    const list = companyHref ? `${companyHref}/${entrada ? "receber" : "pagar"}` : null;
+    return (
+      <div className="card saved">
+        <div className="saved-ok" aria-hidden>
+          ✓
+        </div>
+        <div>
+          <h2 style={{ margin: 0 }}>Conta a {entrada ? "receber" : "pagar"} lançada</h2>
+          <p className="muted" style={{ margin: "4px 0 0" }}>{message}</p>
+        </div>
+        <div className="saved-actions">
+          <button type="button" className="btn primary" autoFocus onClick={() => onNew(type)}>
+            + Novo lançamento
+          </button>
+          {list && (
+            <Link className="btn" href={list}>
+              Voltar para Contas a {entrada ? "receber" : "pagar"}
+            </Link>
+          )}
+          {companyHref && (
+            <Link className="btn" href={`${companyHref}/lancamentos`}>
+              Ver lançamentos
+            </Link>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <ActionForm action={saveTransaction} className="form card" resetOnSuccess={isNew} review={review}>
+    <ActionForm action={saveTransaction} className="form card" review={review} success={isNew ? success : undefined}>
       <input type="hidden" name="companyId" value={companyId} />
       {initial.id && <input type="hidden" name="id" value={initial.id} />}
       <div className="tabs">
