@@ -79,29 +79,60 @@ export async function pendingItems(companyIds: number[], untilDue?: string) {
     .orderBy(asc(transactions.dueDate), asc(transactions.id));
 }
 
-/** Entradas e saídas realizadas no período, sem contar transferências entre empresas. */
+/**
+ * Entradas e saídas realizadas no período, sem contar transferências entre empresas nem ajustes de saldo.
+ * Também devolve, à parte, o líquido das transferências e dos ajustes: com eles, o saldo do início do período fecha com o do fim.
+ */
 export async function realizedTotals(companyIds: number[], from: string, to: string) {
-  if (companyIds.length === 0) return { inflow: 0, outflow: 0, withdrawal: 0 };
+  if (companyIds.length === 0) return { inflow: 0, outflow: 0, withdrawal: 0, transferNet: 0, adjustNet: 0 };
+  const plain = sql`${transactions.transferId} is null and not ${transactions.balanceAdjustment}`;
   const [row] = await db
     .select({
-      inflow: sql<string>`coalesce(sum(${transactions.amount}) filter (where ${transactions.type} = 'entrada'), 0)`,
-      outflow: sql<string>`coalesce(sum(${transactions.amount}) filter (where ${transactions.type} = 'saida'), 0)`,
+      inflow: sql<string>`coalesce(sum(${transactions.amount}) filter (where ${plain} and ${transactions.type} = 'entrada'), 0)`,
+      outflow: sql<string>`coalesce(sum(${transactions.amount}) filter (where ${plain} and ${transactions.type} = 'saida'), 0)`,
       // Retirada do sócio: sai do caixa, mas não é despesa da operação.
-      withdrawal: sql<string>`coalesce(sum(${transactions.amount}) filter (where ${transactions.type} = 'saida' and ${transactions.categoryId} in (select id from categorias where retirada)), 0)`,
+      withdrawal: sql<string>`coalesce(sum(${transactions.amount}) filter (where ${plain} and ${transactions.type} = 'saida' and ${transactions.categoryId} in (select id from categorias where retirada)), 0)`,
+      transferNet: sql<string>`coalesce(sum(${signedAmount}) filter (where ${transactions.transferId} is not null), 0)`,
+      adjustNet: sql<string>`coalesce(sum(${signedAmount}) filter (where ${transactions.balanceAdjustment}), 0)`,
     })
     .from(transactions)
     .where(
       and(
         inArray(transactions.companyId, companyIds),
-        notAdjustment,
         notDeleted,
         isNotNull(transactions.paidAt),
-        isNull(transactions.transferId),
         gte(transactions.paidAt, from),
         lte(transactions.paidAt, to),
       ),
     );
-  return { inflow: Number(row.inflow), outflow: Number(row.outflow), withdrawal: Number(row.withdrawal) };
+  return {
+    inflow: Number(row.inflow),
+    outflow: Number(row.outflow),
+    withdrawal: Number(row.withdrawal),
+    transferNet: Number(row.transferNet),
+    adjustNet: Number(row.adjustNet),
+  };
+}
+
+/**
+ * Contas já baixadas com data de pagamento futura (agendadas): ainda não saíram do saldo de hoje,
+ * mas vão sair. Entram na previsão no dia do pagamento.
+ */
+export async function scheduledItems(companyIds: number[], until: string, d0 = today()) {
+  if (companyIds.length === 0) return [];
+  const rows = await db
+    .select({
+      id: transactions.id,
+      companyId: transactions.companyId,
+      type: transactions.type,
+      amount: transactions.amount,
+      paidAt: transactions.paidAt,
+      transferId: transactions.transferId,
+    })
+    .from(transactions)
+    .where(and(inArray(transactions.companyId, companyIds), notDeleted, sql`${transactions.paidAt} > ${d0}`, lte(transactions.paidAt, until)))
+    .orderBy(asc(transactions.paidAt), asc(transactions.id));
+  return rows.map((r) => ({ ...r, dueDate: r.paidAt! }));
 }
 
 export type TxFilters = {

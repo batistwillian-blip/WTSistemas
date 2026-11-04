@@ -250,6 +250,9 @@ details.box[open] summary { margin-bottom: 12px; }
 .sumrow { display: flex; gap: 28px; flex-wrap: wrap; }
 .sumrow > div { display: flex; flex-direction: column; gap: 2px; }
 .sumrow .v { font-size: 18px; font-weight: 600; font-family: var(--f-num); }
+.recon { margin-top: 14px; width: 100%; font-size: 13px; }
+.recon td { padding: 3px 0; border: 0; }
+.recon tr.total td { border-top: 1px solid var(--line); padding-top: 6px; }
 .debt { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunk); }
 .debt .v { margin-left: auto; font-size: 18px; font-weight: 600; font-family: var(--f-num); }
 .status-ok { display: inline-flex; align-items: center; gap: 8px; }

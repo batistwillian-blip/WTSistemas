@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { CompanyWithRole } from "@/lib/access";
 import { project, type Projection } from "@/lib/finance";
 import { addDays, addMonths, formatDate, formatMoney, monthEnd, monthStart, today } from "@/lib/format";
-import { accountBalances, pendingItems } from "@/lib/queries";
+import { accountBalances, pendingItems, scheduledItems } from "@/lib/queries";
 import { LineChart, type Series } from "./LineChart";
 
 const MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
@@ -23,7 +23,9 @@ export async function ProjectionView({
   // Calcula até o fim do 3º mês para a tabela de fim de mês, e corta o gráfico no horizonte escolhido.
   const monthEnds = [0, 1, 2].map((i) => monthEnd(addMonths(monthStart(d0), i)));
   const span = Math.max(days, Math.round((Date.parse(monthEnds[2]) - Date.parse(d0)) / 86_400_000));
-  const [balances, items] = await Promise.all([accountBalances(ids), pendingItems(ids, addDays(d0, span))]);
+  const [balances, open, scheduled] = await Promise.all([accountBalances(ids), pendingItems(ids, addDays(d0, span)), scheduledItems(ids, addDays(d0, span), d0)]);
+  // Pagamentos agendados (baixados com data futura) ainda não saíram do saldo: entram no dia do pagamento.
+  const items = [...open, ...scheduled];
 
   const rows: { key: string; name: string; color: string; start: number; proj: Projection }[] = [];
   const startAll = balances.reduce((s, b) => s + b.balance, 0);

@@ -4,7 +4,7 @@ import { monthClose, monthOutlook, weekBuckets, type MonthClose } from "@/lib/fi
 import { addDays, addMonths, formatDate, formatMoney, monthEnd, monthStart, today } from "@/lib/format";
 import { accountKindLabels, companyDescriptions } from "@/lib/labels";
 import { AdjustBalanceButton } from "./AdjustBalanceButton";
-import { accountBalances, launchedByMonth, monthlyTotals, pendingItems, realizedTotals, salesTotal, tipsFor } from "@/lib/queries";
+import { accountBalances, launchedByMonth, monthlyTotals, pendingItems, realizedTotals, salesTotal, scheduledItems, tipsFor } from "@/lib/queries";
 import { greeting, verseOfDay } from "@/lib/verses";
 import { roleAllows } from "@/lib/roles";
 import { DueItem } from "./DueItem";
@@ -59,28 +59,33 @@ export async function Overview({
   const backFrom = addMonths(from, -3);
   const backTo = addDays(from, -1);
   const nextMonthNum = (Number(sel.slice(5, 7)) % 12) + 1;
-  const [balances, pending, month, sold, launched, realizedBack, selRealized, tips, nextTips, ...perMonth] = await Promise.all([
+  const [balances, opening, pending, scheduled, month, sold, launched, realizedBack, selRealized, tips, nextTips] = await Promise.all([
     accountBalances(ids),
+    accountBalances(ids, addDays(from, -1)),
     pendingItems(ids, monthEnd(`${lastOutlook}-01`)),
-    realizedTotals(ids, from, to),
+    scheduledItems(ids, monthEnd(`${lastOutlook}-01`), d0),
+    // Realizado do mês até hoje: pagamentos agendados para depois ainda não aconteceram.
+    realizedTotals(ids, from, d0),
     salesTotal(ids, from, d0),
     launchedByMonth(ids, backFrom, backTo),
     monthlyTotals(ids, backFrom, backTo),
     sel < current ? realizedTotals(ids, selFrom, selTo) : Promise.resolve(null),
     tipsFor(ids, Number(sel.slice(5, 7))),
     tipsFor(ids, nextMonthNum),
-    ...companies.map((c) => realizedTotals([c.id], from, to)),
   ]);
   // No consolidado, transferências entre as empresas se anulam e não são receita nem despesa.
   const relevant = consolidated ? pending.filter((p) => !p.transferId) : pending;
+  // Previsão: o que está em aberto mais o que já foi baixado com data futura (agendado), no dia do pagamento.
+  const forecast = [...relevant, ...(consolidated ? scheduled.filter((p) => !p.transferId) : scheduled)];
   const balance = sumBy(balances, (b) => b.balance);
+  const openingBalance = sumBy(opening, (b) => b.balance);
   // Contas que a pessoa pode acertar com o saldo real (atalho no topo, perto do "Saldo hoje").
   const adjustable = balances
     .filter((b) => roleAllows(companies.find((c) => c.id === b.companyId)?.role, "gerir"))
     .sort((a, b) => Number(b.active) - Number(a.active))
     .map((b) => ({ id: b.id, name: consolidated ? `${b.name} · ${companies.find((c) => c.id === b.companyId)?.name}` : b.name, balance: b.balance }));
-  const close = monthClose(balance, relevant, d0, to);
-  const outlook = monthOutlook(balance, relevant, d0, outlookMonths);
+  const close = monthClose(balance, forecast, d0, to);
+  const outlook = monthOutlook(balance, forecast, d0, outlookMonths);
   const selOutlook = outlook.find((o) => o.month === sel) ?? null;
   const next6 = outlook.slice(0, 6);
   const maxAbs = Math.max(1, ...next6.map((o) => Math.abs(o.endBalance)));
@@ -109,12 +114,12 @@ export async function Overview({
     .filter((p) => p.type === "saida" && p.dueDate.slice(0, 7) === sel)
     .sort((a, b) => b.amount - a.amount)
     .slice(0, 5);
-  const weeks = weekBuckets(balance, relevant, d0, 8);
+  const weeks = weekBuckets(balance, forecast, d0, 8);
   const byId = new Map(companies.map((c) => [c.id, c]));
   const monthName = MONTHS[Number(d0.slice(5, 7)) - 1];
   const base = consolidated ? "/consolidado" : `/empresa/${companies[0].slug}`;
 
-  const perCompany = companies.map((c, i) => {
+  const perCompany = companies.map((c) => {
     const b = sumBy(
       balances.filter((x) => x.companyId === c.id),
       (x) => x.balance,
@@ -124,11 +129,10 @@ export async function Overview({
       balance: b,
       close: monthClose(
         b,
-        pending.filter((p) => p.companyId === c.id),
+        [...pending, ...scheduled].filter((p) => p.companyId === c.id),
         d0,
         to,
       ),
-      month: perMonth[i],
     };
   });
 
@@ -248,7 +252,9 @@ export async function Overview({
       text: <>Tudo em dia: nenhuma conta vencida e o mês fecha no verde.</>,
     });
 
-  const covered = close.pay ? Math.min(1, Math.max(0, (balance + close.receive) / close.pay)) : 1;
+  // Arredonda para baixo: se falta qualquer centavo, não pode aparecer 100%.
+  const coveredPct = close.pay ? Math.floor(Math.min(1, Math.max(0, (balance + close.receive) / close.pay)) * 100) : 100;
+  const coveredPctShown = close.shortfall ? Math.min(coveredPct, 99) : coveredPct;
   const maxWeek = Math.max(1, ...weeks.map((w) => Math.abs(w.endBalance)), ...weeks.map((w) => Math.max(w.inflow, w.outflow)));
   const upcoming = relevant.slice(0, 8);
 
@@ -441,10 +447,10 @@ export async function Overview({
               </div>
             )}
             <div className="meter" title="Quanto das contas a pagar do mês já está coberto pelo saldo e pelo que vai entrar">
-              <div style={{ width: `${Math.round(covered * 100)}%` }} />
+              <div style={{ width: `${coveredPctShown}%` }} />
             </div>
             <span className="small muted">
-              {Math.round(covered * 100)}% das contas a pagar até {ddmm(to)} estão cobertas pelo saldo e pelo que vai entrar
+              {coveredPctShown}% das contas a pagar até {ddmm(to)} estão cobertas pelo saldo e pelo que vai entrar
             </span>
           </div>
           <div className="insight-focus">
@@ -647,7 +653,7 @@ export async function Overview({
 
       <div className="grid k2">
         <div className="card">
-          <h2>Realizado em {monthName}</h2>
+          <h2>Realizado em {monthName} até hoje</h2>
           <div className="sumrow">
             <div>
               <span className="eyebrow">Entradas</span>
@@ -662,8 +668,45 @@ export async function Overview({
               <span className={`v ${month.inflow - month.outflow < 0 ? "neg" : ""}`}>{formatMoney(month.inflow - month.outflow)}</span>
             </div>
           </div>
-          <p className="small muted" style={{ marginTop: 12 }}>
-            Transferências entre empresas não entram como entrada ou saída.
+          {/* Conferência: do saldo do fim do mês passado até o saldo de hoje, sem sobrar diferença. */}
+          <table className="recon">
+            <tbody>
+              <tr>
+                <td>Saldo em {ddmm(addDays(from, -1))}</td>
+                <td className="num">{formatMoney(openingBalance)}</td>
+              </tr>
+              <tr>
+                <td>+ Entradas</td>
+                <td className="num pos">{formatMoney(month.inflow)}</td>
+              </tr>
+              <tr>
+                <td>− Saídas</td>
+                <td className="num neg">{formatMoney(month.outflow)}</td>
+              </tr>
+              {month.transferNet !== 0 && (
+                <tr>
+                  <td>{month.transferNet > 0 ? "+" : "−"} Transferências entre empresas</td>
+                  <td className="num">{formatMoney(Math.abs(month.transferNet))}</td>
+                </tr>
+              )}
+              {month.adjustNet !== 0 && (
+                <tr>
+                  <td>{month.adjustNet > 0 ? "+" : "−"} Ajustes de saldo</td>
+                  <td className="num">{formatMoney(Math.abs(month.adjustNet))}</td>
+                </tr>
+              )}
+              <tr className="total">
+                <td>= Saldo hoje</td>
+                <td className="num">
+                  <b>{formatMoney(openingBalance + month.inflow - month.outflow + month.transferNet + month.adjustNet)}</b>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p className="small muted" style={{ marginTop: 8 }}>
+            {consolidated
+              ? "No consolidado, transferências entre as empresas se anulam e não entram como entrada ou saída."
+              : "Transferências entre empresas e ajustes de saldo mexem no saldo, mas não são receita nem despesa."}
           </p>
         </div>
         <div className="card">
