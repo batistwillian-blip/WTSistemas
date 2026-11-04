@@ -30,7 +30,7 @@ type Item = {
   dueDate: string;
   description: string;
   counterpart: string | null;
-  source: "manual" | "chserver";
+  source: "manual" | "chserver" | "pessoal";
   accountId: number;
   originalAmount: number | null;
   transferId?: string | null;

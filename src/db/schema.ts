@@ -29,7 +29,8 @@ export const transferNatureEnum = pgEnum("natureza_transferencia", [
   "aporte",
   "transferencia",
 ]);
-export const sourceEnum = pgEnum("origem", ["manual", "chserver"]);
+// "pessoal" = retirada do sócio gerada pela área Pessoal (espelho de um gasto pessoal pago com dinheiro da empresa).
+export const sourceEnum = pgEnum("origem", ["manual", "chserver", "pessoal"]);
 
 export const users = pgTable("usuarios", {
   id: serial("id").primaryKey(),
@@ -67,6 +68,10 @@ export const companies = pgTable("empresas", {
   name: text("nome").notNull(),
   color: text("cor").notNull().default("#2563eb"),
   sortOrder: integer("ordem").notNull().default(0),
+  // Área Pessoal: "empresa" particular de um usuário. Só o dono vê; fica fora do consolidado e das listas de empresas.
+  ownerId: integer("dono_id").references((): AnyPgColumn => users.id),
+  // Meta de quanto da renda guardar por mês (%), usada na área Pessoal.
+  reserveGoal: integer("meta_reserva"),
 });
 
 export const companyAccess = pgTable(
@@ -92,6 +97,8 @@ export const accounts = pgTable("contas", {
   kind: accountKindEnum("tipo").notNull().default("banco"),
   initialBalance: cents("saldo_inicial").notNull().default(0),
   active: boolean("ativa").notNull().default(true),
+  // Área Pessoal: conta técnica "Pago pelas empresas" (gastos pagos direto com dinheiro de uma empresa). Fica fora do saldo pessoal.
+  viaCompany: boolean("via_empresa").notNull().default(false),
 });
 
 export const categories = pgTable("categorias", {
@@ -102,6 +109,8 @@ export const categories = pgTable("categorias", {
   name: text("nome").notNull(),
   type: txTypeEnum("tipo").notNull(),
   active: boolean("ativa").notNull().default(true),
+  // "Retirada do sócio": saída que não é despesa da operação (relatórios mostram à parte).
+  withdrawal: boolean("retirada").notNull().default(false),
 });
 
 export const transfers = pgTable("transferencias", {
@@ -174,11 +183,16 @@ export const transactions = pgTable(
     competence: date("competencia"),
     // Cadastro do cliente/fornecedor; cliente_fornecedor guarda o nome (cópia) para listas e filtros.
     personId: integer("pessoa_id").references((): AnyPgColumn => people.id),
+    // Área Pessoal: conta da empresa de onde saiu o dinheiro (gera a "Retirada do sócio" lá).
+    withdrawalAccountId: integer("retirada_conta_id").references((): AnyPgColumn => accounts.id),
+    // Na empresa: a retirada espelha este lançamento pessoal.
+    personalOf: integer("origem_pessoal_id").references((): AnyPgColumn => transactions.id),
   },
   (t) => [
     index("lancamentos_empresa_venc_idx").on(t.companyId, t.dueDate),
     index("lancamentos_transferencia_idx").on(t.transferId),
     uniqueIndex("lancamentos_externo_uidx").on(t.source, t.externalId),
+    uniqueIndex("lancamentos_origem_pessoal_uidx").on(t.personalOf),
   ],
 );
 
@@ -352,4 +366,19 @@ export const seasonalTips = pgTable(
     active: boolean("ativa").notNull().default(true),
   },
   (t) => [index("dicas_empresa_mes_idx").on(t.companyId, t.month)],
+);
+
+/** Orçamento mensal por categoria (área Pessoal; serve para empresas também). */
+export const budgets = pgTable(
+  "orcamentos",
+  {
+    companyId: integer("empresa_id")
+      .notNull()
+      .references(() => companies.id),
+    categoryId: integer("categoria_id")
+      .notNull()
+      .references(() => categories.id),
+    amount: cents("valor").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.companyId, t.categoryId] })],
 );

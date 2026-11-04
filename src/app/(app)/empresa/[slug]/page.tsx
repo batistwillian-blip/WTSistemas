@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { Overview } from "@/components/Overview";
 import { PageHead } from "@/components/PageHead";
 import { requireCompany } from "@/lib/access";
@@ -8,6 +9,7 @@ export default async function EmpresaPage({ params, searchParams }: { params: Pr
   const { slug } = await params;
   const sp = await searchParams;
   const { user, company, role } = await requireCompany(slug);
+  if (company.ownerId) redirect("/pessoal");
   return (
     <Overview
       companies={[company]}

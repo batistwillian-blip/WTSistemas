@@ -5,12 +5,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { accounts, categories, transactions } from "@/db/schema";
+import { accounts, categories, companies, transactions } from "@/db/schema";
 import { requireCompanyId } from "@/lib/access";
 import { logChange } from "@/lib/audit";
 import { competenceOf, isMonthlySeries, moveSeriesDate, parsePlan, planSeries, settle, shiftCompetence, OPEN_ENDED_MONTHS, SYSTEM_DOC, type SeriesMode } from "@/lib/billing";
 import { nextDocument } from "@/lib/documents";
 import { findOrCreatePerson } from "@/lib/people";
+import { syncWithdrawals } from "@/lib/withdrawals";
 import { personKindOf } from "@/lib/people-sql";
 import { addMonths, today } from "@/lib/format";
 import { guard, int, isoDate, money, optStr, str, UserError, type ActionState } from "@/lib/form";
@@ -29,7 +30,7 @@ export async function saveTransaction(_prev: ActionState, fd: FormData): Promise
   return guard(async () => {
     const companyId = int(fd, "companyId");
     if (!companyId) throw new UserError("Empresa inválida.");
-    const { user } = await requireCompanyId(companyId, "lancar");
+    const { user, company } = await requireCompanyId(companyId, "lancar");
 
     const id = int(fd, "id");
     let savedMsg = "Lançamento salvo.";
@@ -49,6 +50,29 @@ export async function saveTransaction(_prev: ActionState, fd: FormData): Promise
       ? await db.select().from(accounts).where(and(eq(accounts.id, accountId), eq(accounts.companyId, companyId)))
       : [];
     if (!account) throw new UserError("Escolha uma conta desta empresa.");
+
+    // Área Pessoal: gasto pago (ou retirada recebida) com dinheiro de uma empresa vira "Retirada do sócio" lá.
+    const withdrawalAccountId = company.ownerId ? int(fd, "withdrawalAccountId") : null;
+    let bookAccount = account;
+    if (withdrawalAccountId) {
+      const [source] = await db
+        .select({ acc: accounts, ownerId: companies.ownerId })
+        .from(accounts)
+        .innerJoin(companies, eq(companies.id, accounts.companyId))
+        .where(eq(accounts.id, withdrawalAccountId));
+      if (!source || source.ownerId || source.acc.viaCompany) throw new UserError("Escolha a conta da empresa de onde saiu o dinheiro.");
+      await requireCompanyId(source.acc.companyId, "lancar");
+      if (type === "saida") {
+        // O gasto fica na conta técnica "Pago pelas empresas" (não mexe no saldo das suas contas pessoais).
+        const [via] = await db.select().from(accounts).where(and(eq(accounts.companyId, companyId), eq(accounts.viaCompany, true)));
+        if (!via) throw new UserError("Área pessoal sem a conta \"Pago pelas empresas\". Recarregue a página.");
+        bookAccount = via;
+      } else if (account.viaCompany) {
+        throw new UserError("Escolha em qual conta pessoal o dinheiro entrou.");
+      }
+    } else if (account.viaCompany) {
+      throw new UserError("Escolha de qual conta saiu o dinheiro.");
+    }
 
     const categoryId = int(fd, "categoryId");
     if (categoryId) {
@@ -71,7 +95,8 @@ export async function saveTransaction(_prev: ActionState, fd: FormData): Promise
       dueDate,
       competence,
       paidAt,
-      accountId: account.id,
+      accountId: bookAccount.id,
+      withdrawalAccountId: withdrawalAccountId ?? null,
       categoryId: categoryId ?? null,
       counterpart: null as string | null,
       personId: null as number | null,
@@ -100,6 +125,7 @@ export async function saveTransaction(_prev: ActionState, fd: FormData): Promise
         .where(eq(transactions.id, id))
         .returning();
       await logChange({ user, companyId, action: "editar", entity: "lancamento", entityId: id, before, after });
+      await syncWithdrawals([id], user);
       // "Esta e as próximas": leva valor, conta, categoria, fornecedor e o dia de vencimento para as ocorrências seguintes ainda em aberto.
       if (str(fd, "scope") === "proximas" && before.recurrenceGroup) {
         const group = before.recurrenceGroup;
@@ -119,6 +145,7 @@ export async function saveTransaction(_prev: ActionState, fd: FormData): Promise
               .set({
                 amount: values.amount,
                 accountId: values.accountId,
+                withdrawalAccountId: values.withdrawalAccountId,
                 categoryId: values.categoryId,
                 counterpart: values.counterpart,
                 personId: values.personId,
@@ -143,6 +170,7 @@ export async function saveTransaction(_prev: ActionState, fd: FormData): Promise
             );
           }
         });
+        await syncWithdrawals([id, ...next.map((n) => n.id)], user);
         revalidatePath("/", "layout");
         return {
           ok: `Lançamento atualizado, junto com ${next.length} ${next.length === 1 ? "ocorrência seguinte" : "ocorrências seguintes"}${moved && next.length ? ` (vencimentos ajustados)` : ""}.`,
@@ -198,6 +226,10 @@ export async function saveTransaction(_prev: ActionState, fd: FormData): Promise
       const repeat = rows.length;
       savedMsg = `${description} · Doc ${document}${repeat > 1 ? ` · ${repeat} ${mode === "parcelada" ? "parcelas" : "meses"}` : ""}.`;
       const created = await db.insert(transactions).values(rows).returning();
+      await syncWithdrawals(
+        created.map((c) => c.id),
+        user,
+      );
       await logChange({
         user,
         companyId,
@@ -242,6 +274,10 @@ export async function setPaid(fd: FormData) {
     before: { paidAt: before.paidAt },
     after: { paidAt },
   });
+  await syncWithdrawals(
+    after.map((a) => a.id),
+    user,
+  );
   revalidatePath("/", "layout");
 }
 
@@ -275,6 +311,7 @@ async function undoSettlement(before: Tx, user: { id: number; name: string }) {
       .returning();
     await logChange({ user, companyId: before.companyId, action: "estornar_baixa", entity: "lancamento", entityId: before.id, before, after }, tx);
   });
+  await syncWithdrawals([before.id, ...(before.partialOf ? [before.partialOf] : [])], user);
 }
 
 /**
@@ -298,6 +335,10 @@ export async function settleTransaction(_prev: ActionState, fd: FormData): Promi
       ? await db.select().from(accounts).where(and(eq(accounts.id, accountId), eq(accounts.companyId, current.companyId)))
       : [];
     if (!account) throw new UserError("Escolha de qual conta saiu o dinheiro.");
+    if (account.viaCompany && !current.withdrawalAccountId) throw new UserError("Escolha de qual conta saiu o dinheiro.");
+    if (current.withdrawalAccountId && fd.get("partial") === "on") {
+      throw new UserError("Gasto pago com dinheiro da empresa não aceita pagamento parcial. Ajuste o valor do lançamento ou pague o total.");
+    }
     const interest = money(fd, "interest") ?? 0;
     const discount = money(fd, "discount") ?? 0;
     const paid = money(fd, "paid") ?? current.amount + interest - discount;
@@ -311,7 +352,16 @@ export async function settleTransaction(_prev: ActionState, fd: FormData): Promi
       if (r.kind === "total") {
         const [after] = await tx
           .update(transactions)
-          .set({ paidAt, amount: r.paid, interest: r.interest, discount: r.discount, accountId: account.id, updatedAt: new Date() })
+          .set({
+            paidAt,
+            amount: r.paid,
+            interest: r.interest,
+            discount: r.discount,
+            accountId: account.id,
+            // Pago de uma conta pessoal: deixa de ser retirada da empresa.
+            withdrawalAccountId: account.viaCompany ? before.withdrawalAccountId : null,
+            updatedAt: new Date(),
+          })
           .where(eq(transactions.id, id))
           .returning();
         await logChange({ user, companyId: before.companyId, action: "baixar", entity: "lancamento", entityId: id, before, after }, tx);
@@ -353,6 +403,7 @@ export async function settleTransaction(_prev: ActionState, fd: FormData): Promi
       return `${word} parcial registrado. Ficam em aberto ${(r.remaining / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`;
     });
     revalidatePath("/", "layout");
+    await syncWithdrawals([id], user);
     return { ok: done };
   });
 }
@@ -414,6 +465,7 @@ export async function removeTransaction(_prev: ActionState, fd: FormData): Promi
         tx,
       );
     });
+    await syncWithdrawals(ids, user);
     revalidatePath("/", "layout");
     // Da tela de edição a conta deixa de existir: volta para a lista (só caminhos internos).
     const back = str(fd, "redirectTo", 200);

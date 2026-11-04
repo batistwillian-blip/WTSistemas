@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { transactions } from "@/db/schema";
 import { logChange } from "./audit";
+import { syncWithdrawals } from "./withdrawals";
 import { addMonths, monthStart, today } from "./format";
 import { monthlyAfter, OPEN_ENDED_MONTHS } from "./billing";
 
@@ -25,6 +26,7 @@ export async function extendOpenEnded(companyIds: number[]) {
     .having(sql`max(${transactions.dueDate}) < ${horizon} and bool_or(${transactions.deletedAt} is null)`);
   if (groups.length === 0) return;
 
+  const generated: number[] = [];
   await db.transaction(async (tx) => {
     const [{ locked }] = await tx.execute<{ locked: boolean }>(sql`select pg_try_advisory_xact_lock(424242) as locked`).then((r) => r.rows);
     if (!locked) return;
@@ -62,6 +64,7 @@ export async function extendOpenEnded(companyIds: number[]) {
           categoryId: model.categoryId,
           counterpart: model.counterpart,
           personId: model.personId,
+          withdrawalAccountId: model.withdrawalAccountId,
           amount: model.originalAmount ?? model.amount - model.interest + model.discount,
           dueDate,
           competence: monthStart(dueDate),
@@ -74,10 +77,13 @@ export async function extendOpenEnded(companyIds: number[]) {
           createdBy: model.createdBy,
         })),
       ).returning({ id: transactions.id });
+      generated.push(...created.map((c) => c.id));
       await logChange(
         { user: null, companyId: model.companyId, action: "gerar_recorrencia", entity: "lancamento", entityId: created.map((c) => c.id).join(","), after: { grupo: model.recurrenceGroup, vencimentos: dates } },
         tx,
       );
     }
   });
+  // Gastos pessoais pagos com dinheiro da empresa: cria a retirada correspondente dos meses novos.
+  if (generated.length) await syncWithdrawals(generated, null);
 }

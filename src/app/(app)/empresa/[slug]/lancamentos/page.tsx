@@ -167,7 +167,7 @@ export default async function LancamentosPage({ params, searchParams }: { params
                         {canLaunch && manual && !tx.paidAt && !tx.transferId && (
                           <SettleButton
                             item={tx}
-                            accounts={accounts.filter((a) => a.active || a.id === tx.accountId)}
+                            accounts={accounts.filter((a) => (a.active && !a.viaCompany) || a.id === tx.accountId)}
                             today={d0}
                             label={tx.type === "entrada" ? "Receber" : "Pagar"}
                           />

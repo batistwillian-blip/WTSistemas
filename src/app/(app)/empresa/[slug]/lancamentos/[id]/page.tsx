@@ -8,10 +8,11 @@ import { DeleteButton } from "@/components/DeleteButton";
 import { roleAllows } from "@/lib/roles";
 import { installmentLabel } from "@/lib/billing";
 import { TransactionForm } from "../TransactionForm";
+import { personalFormOptions } from "@/lib/withdrawals";
 
 export default async function EditarLancamentoPage({ params }: { params: Promise<{ slug: string; id: string }> }) {
   const { slug, id } = await params;
-  const { company, role } = await requireCompany(slug);
+  const { user, company, role } = await requireCompany(slug);
   const tx = /^\d+$/.test(id) ? await getTransaction(Number(id)) : null;
   if (!tx || tx.companyId !== company.id) notFound();
   const editable = roleAllows(role, "lancar") && tx.source === "manual" && !tx.transferId;
@@ -21,6 +22,7 @@ export default async function EditarLancamentoPage({ params }: { params: Promise
     getPeople(company.id),
     deleteInfo(tx.id),
   ]);
+  const personal = await personalFormOptions(user, company);
   const back = `/empresa/${slug}/${tx.type === "entrada" ? "receber" : "pagar"}`;
   return (
     <div className="stack">
@@ -33,6 +35,9 @@ export default async function EditarLancamentoPage({ params }: { params: Promise
       {tx.source === "chserver" && (
         <div className="alert info">Importado do CHServer. Alterações devem ser feitas lá; a próxima sincronização atualiza aqui.</div>
       )}
+      {tx.source === "pessoal" && (
+        <div className="alert info">Retirada do sócio lançada pela área Pessoal do sócio. Só ele altera, por lá.</div>
+      )}
       {tx.transferId && <div className="alert info">Faz parte de uma transferência entre empresas. Altere em Entre empresas.</div>}
       {editable ? (
         <>
@@ -43,6 +48,7 @@ export default async function EditarLancamentoPage({ params }: { params: Promise
             today={today()}
             people={people}
             categoriesHref={roleAllows(role, "gerir") ? `/empresa/${slug}/ajustes` : undefined}
+            personal={personal}
             initial={{
               id: tx.id,
               type: tx.type,
@@ -60,6 +66,7 @@ export default async function EditarLancamentoPage({ params }: { params: Promise
               installments: tx.installments,
               document: tx.document,
               competence: tx.competence,
+              withdrawalAccountId: tx.withdrawalAccountId,
             }}
           />
           {!(tx.partialOf && tx.paidAt) && (

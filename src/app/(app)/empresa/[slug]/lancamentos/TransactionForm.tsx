@@ -31,7 +31,11 @@ export type TxInitial = {
   openEnded?: boolean;
   installment?: number | null;
   installments?: number | null;
+  withdrawalAccountId?: number | null;
 };
+
+/** Área Pessoal: conta técnica dos gastos pagos pelas empresas e as contas das empresas de onde pode sair o dinheiro. */
+export type PersonalOptions = { viaAccountId: number; sources: { id: number; name: string; companyName: string }[] };
 
 type FormProps = {
   companyId: number;
@@ -48,6 +52,7 @@ type FormProps = {
   peopleHref?: string;
   /** Raiz da empresa ("/empresa/slug"), para os atalhos depois de salvar. */
   companyHref?: string;
+  personal?: PersonalOptions;
 };
 
 /**
@@ -81,6 +86,7 @@ function TransactionFormInner({
   people = [],
   peopleHref,
   companyHref,
+  personal,
   onNew,
 }: FormProps & { onNew: (type: "entrada" | "saida") => void}) {
   const isNew = !initial.id;
@@ -93,6 +99,17 @@ function TransactionFormInner({
   const [parts, setParts] = useState("3");
   const [amountIs, setAmountIs] = useState<"total" | "parcela">("total");
   const entrada = type === "entrada";
+  // Área Pessoal: de onde saiu (gasto) ou veio (renda) o dinheiro. "p:id" = conta pessoal, "e:id" = conta de uma empresa.
+  const ownAccounts = personal ? accounts.filter((a) => a.id !== personal.viaAccountId) : accounts;
+  const [payWith, setPayWith] = useState(
+    initial.withdrawalAccountId ? `e:${initial.withdrawalAccountId}` : `p:${initial.accountId && initial.accountId !== personal?.viaAccountId ? initial.accountId : (ownAccounts[0]?.id ?? "")}`,
+  );
+  const [personalAccount, setPersonalAccount] = useState(String(initial.accountId && initial.accountId !== personal?.viaAccountId ? initial.accountId : (ownAccounts[0]?.id ?? "")));
+  const [fromCompany, setFromCompany] = useState(initial.withdrawalAccountId ? String(initial.withdrawalAccountId) : "");
+  const sourceLabel = (id: string) => {
+    const s = personal?.sources.find((x) => String(x.id) === id);
+    return s ? `${s.companyName} · ${s.name}` : null;
+  };
   const [party, setParty] = useState(initial.counterpart);
   const partyOptions = people.filter((p) => p.kind === (entrada ? "cliente" : "fornecedor"));
   const partyMatch = partyOptions.find((p) => p.name.toLocaleLowerCase("pt-BR") === party.trim().toLocaleLowerCase("pt-BR"));
@@ -137,13 +154,14 @@ function TransactionFormInner({
     const doc = get("document");
     const comp = get("competence") || get("dueDate").slice(0, 7);
     const account = accounts.find((a) => String(a.id) === get("accountId"))?.name ?? "—";
+    const fromCo = personal && get("withdrawalAccountId") ? sourceLabel(get("withdrawalAccountId")) : null;
     const category = categories.find((c) => String(c.id) === get("categoryId"))?.name ?? "Sem categoria";
     const who = get("counterpart");
     const series = isNew && mode !== "unica" && preview ? preview : null;
     const scope = get("scope");
     const lines: [string, React.ReactNode][] = [
       ["Descrição", <b key="d">{get("description")}</b>],
-      [entrada ? "Cliente" : "Fornecedor", who ? `${who}${partyMatch ? ` (${partyMatch.code})` : " · novo cadastro"}` : "—"],
+      [personal ? (entrada ? "De quem" : "Onde / com quem") : entrada ? "Cliente" : "Fornecedor", who ? `${who}${partyMatch ? ` (${partyMatch.code})` : " · novo cadastro"}` : "—"],
       [
         series ? (mode === "parcelada" ? "Parcelas" : "Contas") : "Valor",
         series ? (
@@ -159,9 +177,18 @@ function TransactionFormInner({
       ],
       [series ? "1º vencimento" : "Vencimento", formatDate(get("dueDate"))],
       ["Competência", comp ? `${comp.slice(5, 7)}/${comp.slice(0, 4)}` : "—"],
-      ["Conta", account],
+      ...(personal
+        ? ([
+            [
+              entrada ? "Entrou em" : "Pago com",
+              fromCo && !entrada ? `Dinheiro da empresa: ${fromCo}` : account,
+            ],
+            ...(entrada && fromCo ? [["Veio da empresa", fromCo]] : []),
+            ...(fromCo ? [["Na empresa", "Vira uma \"Retirada do sócio\" (sem o detalhe deste lançamento)"]] : []),
+          ] as [string, string][])
+        : ([["Conta", account]] as [string, string][])),
       ["Categoria", category],
-      ["Nº do documento", doc || (isNew ? `Automático${nextDocument ? ` (${nextDocument})` : ""}` : "—")],
+      ...(personal ? [] : ([["Nº do documento", doc || (isNew ? `Automático${nextDocument ? ` (${nextDocument})` : ""}` : "—")]] as [string, string][])),
       ["Situação", paidAt ? `Já ${entrada ? "recebida" : "paga"} em ${formatDate(paidAt)}` : "Em aberto"],
     ];
     if (get("notes")) lines.push(["Observações", get("notes")]);
@@ -172,7 +199,9 @@ function TransactionFormInner({
           : "Só esta",
       ]);
     return {
-      title: isNew ? `Deseja lançar ${series ? (mode === "parcelada" ? "esta conta parcelada" : "esta conta fixa") : `a ${kind}`}?` : `Deseja salvar as alterações da ${kind}?`,
+      title: isNew
+        ? `Deseja lançar ${series ? (mode === "parcelada" ? "esta conta parcelada" : "esta conta fixa") : personal ? (entrada ? "esta renda" : "este gasto") : `a ${kind}`}?`
+        : `Deseja salvar as alterações ${personal ? (entrada ? "desta renda" : "deste gasto") : `da ${kind}`}?`,
       confirm: isNew ? "Sim, lançar" : "Sim, salvar",
       body: (
         <>
@@ -242,14 +271,15 @@ function TransactionFormInner({
   };
 
   const success = (message: string) => {
-    const list = companyHref ? `${companyHref}/${entrada ? "receber" : "pagar"}` : null;
+    if (personal) message = message.replace(/ · Doc A\d+/, "");
+    const list = personal ? "/pessoal" : companyHref ? `${companyHref}/${entrada ? "receber" : "pagar"}` : null;
     return (
       <div className="card saved">
         <div className="saved-ok" aria-hidden>
           ✓
         </div>
         <div>
-          <h2 style={{ margin: 0 }}>Conta a {entrada ? "receber" : "pagar"} lançada</h2>
+          <h2 style={{ margin: 0 }}>{personal ? (entrada ? "Renda lançada" : "Gasto lançado") : `Conta a ${entrada ? "receber" : "pagar"} lançada`}</h2>
           <p className="muted" style={{ margin: "4px 0 0" }}>{message}</p>
         </div>
         <div className="saved-actions">
@@ -258,7 +288,7 @@ function TransactionFormInner({
           </button>
           {list && (
             <Link className="btn" href={list}>
-              Voltar para Contas a {entrada ? "receber" : "pagar"}
+              {personal ? "Voltar para Meu mês" : `Voltar para Contas a ${entrada ? "receber" : "pagar"}`}
             </Link>
           )}
           {companyHref && (
@@ -277,10 +307,10 @@ function TransactionFormInner({
       {initial.id && <input type="hidden" name="id" value={initial.id} />}
       <div className="tabs">
         <label className="check">
-          <input type="radio" name="type" value="entrada" checked={entrada} onChange={() => setType("entrada")} /> Entrada (a receber)
+          <input type="radio" name="type" value="entrada" checked={entrada} onChange={() => setType("entrada")} /> {personal ? "Renda (entrou para mim)" : "Entrada (a receber)"}
         </label>
         <label className="check">
-          <input type="radio" name="type" value="saida" checked={!entrada} onChange={() => setType("saida")} /> Saída (a pagar)
+          <input type="radio" name="type" value="saida" checked={!entrada} onChange={() => setType("saida")} /> {personal ? "Gasto" : "Saída (a pagar)"}
         </label>
       </div>
       <div className="fields">
@@ -288,10 +318,12 @@ function TransactionFormInner({
           Descrição
           <input name="description" defaultValue={initial.description} maxLength={200} required />
         </label>
-        <label>
-          Nº do documento
-          <input name="document" defaultValue={initial.document ?? ""} maxLength={60} placeholder={nextDocument ? `Automático: ${nextDocument}` : "Automático"} />
-        </label>
+        {!personal && (
+          <label>
+            Nº do documento
+            <input name="document" defaultValue={initial.document ?? ""} maxLength={60} placeholder={nextDocument ? `Automático: ${nextDocument}` : "Automático"} />
+          </label>
+        )}
         <label>
           {mode === "parcelada" && amountIs === "total" ? "Valor total (R$)" : mode === "parcelada" ? "Valor da parcela (R$)" : "Valor (R$)"}
           <input name="amount" value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" placeholder="0,00" required />
@@ -307,16 +339,72 @@ function TransactionFormInner({
             Em branco = mês do vencimento
           </span>
         </label>
-        <label>
-          Conta
-          <select name="accountId" defaultValue={initial.accountId ?? accounts[0]?.id} required>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        {personal && !entrada ? (
+          <label>
+            Pago com
+            <select value={payWith} onChange={(e) => setPayWith(e.target.value)} required>
+              <optgroup label="Minhas contas">
+                {ownAccounts.map((a) => (
+                  <option key={a.id} value={`p:${a.id}`}>
+                    {a.name}
+                  </option>
+                ))}
+              </optgroup>
+              {personal.sources.length > 0 && (
+                <optgroup label="Dinheiro da empresa (retirada do sócio)">
+                  {personal.sources.map((a) => (
+                    <option key={a.id} value={`e:${a.id}`}>
+                      {a.companyName} · {a.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+            <input type="hidden" name="accountId" value={payWith.startsWith("e:") ? personal.viaAccountId : payWith.slice(2)} />
+            {payWith.startsWith("e:") && <input type="hidden" name="withdrawalAccountId" value={payWith.slice(2)} />}
+            <span className="small muted" style={{ fontWeight: 400 }}>
+              {payWith.startsWith("e:") ? "Na empresa vira uma \"Retirada do sócio\"" : "Sai do seu saldo pessoal"}
+            </span>
+          </label>
+        ) : personal ? (
+          <>
+            <label>
+              Entrou em
+              <select name="accountId" value={personalAccount} onChange={(e) => setPersonalAccount(e.target.value)} required>
+                {ownAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Veio de uma empresa?
+              <select name="withdrawalAccountId" value={fromCompany} onChange={(e) => setFromCompany(e.target.value)}>
+                <option value="">Não</option>
+                {personal.sources.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.companyName} · {a.name}
+                  </option>
+                ))}
+              </select>
+              <span className="small muted" style={{ fontWeight: 400 }}>
+                {fromCompany ? "Na empresa vira uma \"Retirada do sócio\"" : "Se a empresa já lançou esse pagamento lá, deixe \"Não\""}
+              </span>
+            </label>
+          </>
+        ) : (
+          <label>
+            Conta
+            <select name="accountId" defaultValue={initial.accountId ?? accounts[0]?.id} required>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label>
           <span>
             Categoria
@@ -340,7 +428,7 @@ function TransactionFormInner({
         </label>
         <label>
           <span>
-            {entrada ? "Cliente" : "Fornecedor"}
+            {personal ? (entrada ? "De quem (opcional)" : "Onde / com quem (opcional)") : entrada ? "Cliente" : "Fornecedor"}
             {peopleHref && (
               <a href={peopleHref} className="small" style={{ marginLeft: 8, fontWeight: 400 }}>
                 cadastro completo

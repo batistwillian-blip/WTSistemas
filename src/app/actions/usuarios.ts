@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { companies, companyAccess, users, type Role } from "@/db/schema";
 import { requireAdmin } from "@/lib/access";
@@ -13,7 +13,8 @@ import { hashPassword, passwordProblem } from "@/lib/password";
 const ROLES: Role[] = ["leitura", "lancador", "gestor"];
 
 async function readAccess(fd: FormData) {
-  const all = await db.select().from(companies);
+  // Área pessoal nunca recebe acesso de outro usuário.
+  const all = await db.select().from(companies).where(isNull(companies.ownerId));
   const list: { companyId: number; role: Role }[] = [];
   for (const c of all) {
     const role = str(fd, `role_${c.id}`) as Role;

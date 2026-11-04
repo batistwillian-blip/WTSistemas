@@ -78,11 +78,13 @@ export async function pendingItems(companyIds: number[], untilDue?: string) {
 
 /** Entradas e saídas realizadas no período, sem contar transferências entre empresas. */
 export async function realizedTotals(companyIds: number[], from: string, to: string) {
-  if (companyIds.length === 0) return { inflow: 0, outflow: 0 };
+  if (companyIds.length === 0) return { inflow: 0, outflow: 0, withdrawal: 0 };
   const [row] = await db
     .select({
       inflow: sql<string>`coalesce(sum(${transactions.amount}) filter (where ${transactions.type} = 'entrada'), 0)`,
       outflow: sql<string>`coalesce(sum(${transactions.amount}) filter (where ${transactions.type} = 'saida'), 0)`,
+      // Retirada do sócio: sai do caixa, mas não é despesa da operação.
+      withdrawal: sql<string>`coalesce(sum(${transactions.amount}) filter (where ${transactions.type} = 'saida' and ${transactions.categoryId} in (select id from categorias where retirada)), 0)`,
     })
     .from(transactions)
     .where(
@@ -95,7 +97,7 @@ export async function realizedTotals(companyIds: number[], from: string, to: str
         lte(transactions.paidAt, to),
       ),
     );
-  return { inflow: Number(row.inflow), outflow: Number(row.outflow) };
+  return { inflow: Number(row.inflow), outflow: Number(row.outflow), withdrawal: Number(row.withdrawal) };
 }
 
 export type TxFilters = {
@@ -174,7 +176,8 @@ export async function listTransfers(companyIds: number[]) {
 }
 
 export async function allCompanies() {
-  return db.select().from(companies).orderBy(asc(companies.sortOrder), asc(companies.name));
+  // Sem as áreas pessoais (não são empresas).
+  return db.select().from(companies).where(isNull(companies.ownerId)).orderBy(asc(companies.sortOrder), asc(companies.name));
 }
 
 /**

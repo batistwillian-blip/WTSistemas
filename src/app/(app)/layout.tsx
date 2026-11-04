@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { logout } from "@/app/actions/auth";
 import { Mark } from "@/components/Mark";
 import { MenuToggle, SidebarNav, type NavGroup } from "@/components/Sidebar";
-import { getUserCompanies } from "@/lib/access";
+import { getPersonal, getUserCompanies } from "@/lib/access";
+import { personalAccountIds } from "@/lib/personal";
 import { requireUser } from "@/lib/auth";
 import { formatMoney, today } from "@/lib/format";
 import { accountBalances, pendingItems } from "@/lib/queries";
@@ -17,15 +18,18 @@ export const dynamic = "force-dynamic";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
   if (user.mustChangePassword) redirect("/conta?primeiro=1");
-  const companies = await getUserCompanies(user);
+  const [companies, personal] = await Promise.all([getUserCompanies(user), getPersonal(user)]);
   const ids = companies.map((c) => c.id);
+  // A área Pessoal entra só nas contas fixas, no saldo e nos avisos dela; nunca no consolidado.
+  const allIds = personal ? [...ids, personal.id] : ids;
   const d0 = today();
   // Contas fixas sem fim: garante os próximos 12 meses gerados (barato quando não há nada a fazer).
-  await extendOpenEnded(ids).catch((e) => console.error("Falha ao estender contas fixas:", e));
-  const [balances, overdueItems, [integration]] = await Promise.all([
-    accountBalances(ids),
-    pendingItems(ids, d0),
+  await extendOpenEnded(allIds).catch((e) => console.error("Falha ao estender contas fixas:", e));
+  const [balances, overdueItems, [integration], personalAccs] = await Promise.all([
+    accountBalances(allIds),
+    pendingItems(allIds, d0),
     db.select({ companyId: integrationSettings.companyId, importSales: integrationSettings.importSales }).from(integrationSettings),
+    personal ? personalAccountIds(personal.id) : Promise.resolve(null),
   ]);
   // A empresa ligada ao Integrador BI ganha o submenu Vendas.
   const salesCompanyId = integration?.importSales ? integration.companyId : null;
@@ -84,6 +88,32 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       links,
       section: "Empresas",
     });
+  }
+  if (personal) {
+    const base = `/empresa/${personal.slug}`;
+    // Saldo pessoal: só as contas de verdade (a conta técnica "Pago pelas empresas" fica fora).
+    const total = balances.filter((b) => personalAccs?.real.includes(b.id)).reduce((s, b) => s + b.balance, 0);
+    groups.push({
+      key: "pessoal",
+      title: "Pessoal",
+      color: personal.color,
+      href: "/pessoal",
+      balance: formatMoney(total),
+      negative: total < 0,
+      overdue: overdueOf([personal.id]),
+      links: [
+        { href: "/pessoal", label: "Meu mês" },
+        { href: `${base}/lancamentos`, label: "Lançamentos" },
+        { href: `${base}/pagar`, label: "Gastos a pagar", count: overdueOf([personal.id], false, "saida"), heading: "Controle", sub: true },
+        { href: `${base}/receber`, label: "Renda", sub: true },
+        { href: "/pessoal/orcamento", label: "Orçamento e meta", sub: true },
+        { href: `${base}/relatorios`, label: "Relatórios", sub: true },
+        { href: `${base}/ajustes`, label: "Categorias e contas", heading: "Configurações", sub: true },
+      ],
+      section: "Só você vê",
+    });
+  } else if (user.isAdmin) {
+    groups.push({ key: "pessoal", title: "Pessoal", href: "/pessoal", links: [{ href: "/pessoal", label: "Ativar área pessoal" }], section: "Só você vê" });
   }
   if (user.isAdmin) {
     groups.push({

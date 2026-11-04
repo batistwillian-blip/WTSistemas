@@ -387,7 +387,7 @@ export async function BillsView({
                             )}{" "}
                             {parcel && <span className="badge">parcela {parcel}</span>} {r.partialOf && <span className="badge amber">parcial</span>}{" "}
                             {r.originalAmount !== null && !r.paidAt && <span className="badge amber">restante de {formatMoney(r.originalAmount)}</span>}{" "}
-                            {r.offBalance ? <span className="badge">só consulta</span> : r.source === "chserver" ? <span className="badge blue">CHServer</span> : null}
+                            {r.offBalance ? <span className="badge">só consulta</span> : r.source === "chserver" ? <span className="badge blue">CHServer</span> : r.source === "pessoal" ? <span className="badge">área pessoal</span> : null}
                           </div>
                           <div className="m">
                             {consolidated && (
@@ -423,7 +423,7 @@ export async function BillsView({
                           <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
                             <span className={`badge ${badge[1]}`}>{badge[0]}</span>
                             {canLaunch && !r.paidAt && !r.transferId && (
-                              <SettleButton item={r} accounts={accs.filter((a) => a.companyId === r.companyId && (a.active || a.id === r.accountId))} today={d0} />
+                              <SettleButton item={r} accounts={accs.filter((a) => a.companyId === r.companyId && ((a.active && !a.viaCompany) || a.id === r.accountId))} today={d0} />
                             )}
                             {canLaunch && !r.paidAt && r.transferId && (
                               <form action={setPaid}>

@@ -83,12 +83,18 @@ export async function ReportsView({ companies, consolidated, period }: { compani
         <div className="card kpi">
           <span className="label">Saídas</span>
           <span className="value neg">{formatMoney(now.outflow)}</span>
-          <span className="sub">{change(now.outflow, before.outflow) ?? "sem período anterior para comparar"}</span>
+          <span className="sub">
+            {change(now.outflow, before.outflow) ?? "sem período anterior para comparar"}
+            {now.withdrawal > 0 && <> · inclui {formatMoney(now.withdrawal)} de retirada do sócio</>}
+          </span>
         </div>
         <div className="card kpi hero">
           <span className="label">Resultado</span>
           <span className="value">{formatMoney(result)}</span>
-          <span className="sub">Período anterior: {formatMoney(resultBefore)}</span>
+          <span className="sub">
+            {now.withdrawal > 0 && <>Antes das retiradas do sócio: {formatMoney(result + now.withdrawal)} · </>}
+            Período anterior: {formatMoney(resultBefore)}
+          </span>
         </div>
       </div>
       <div className="card">
