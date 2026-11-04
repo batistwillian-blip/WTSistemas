@@ -680,9 +680,9 @@ export async function Overview({
                     <td className="num">
                       <Money value={b.balance} colored />
                     </td>
-                    {!consolidated && roleAllows(byId.get(b.companyId)?.role, "gerir") && (
+                    {roleAllows(byId.get(b.companyId)?.role, "gerir") && (
                       <td className="num" style={{ width: 1, whiteSpace: "nowrap" }}>
-                        <AdjustBalanceButton account={{ id: b.id, name: b.name, balance: b.balance }} today={d0} className="btn sm" />
+                        <AdjustBalanceButton account={{ id: b.id, name: consolidated ? `${b.name} · ${byId.get(b.companyId)?.name}` : b.name, balance: b.balance }} today={d0} className="btn sm" />
                       </td>
                     )}
                   </tr>
