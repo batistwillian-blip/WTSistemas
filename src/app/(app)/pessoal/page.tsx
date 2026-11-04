@@ -108,6 +108,9 @@ export default async function PessoalPage({ searchParams }: { searchParams: Sear
           <Link className="btn sm" href={`${base}/lancamentos/novo?tipo=entrada`}>
             + Nova renda
           </Link>
+          <Link className="btn sm" href="/pessoal/importar">
+            Importar gastos
+          </Link>
           <Link className="btn sm" href="/pessoal/orcamento">
             Orçamento e meta
           </Link>

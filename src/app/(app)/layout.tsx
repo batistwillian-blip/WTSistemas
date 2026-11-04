@@ -104,6 +104,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       links: [
         { href: "/pessoal", label: "Meu mês" },
         { href: `${base}/lancamentos`, label: "Lançamentos" },
+        { href: "/pessoal/importar", label: "Importar gastos" },
         { href: `${base}/pagar`, label: "Gastos a pagar", count: overdueOf([personal.id], false, "saida"), heading: "Controle", sub: true },
         { href: `${base}/receber`, label: "Renda", sub: true },
         { href: "/pessoal/orcamento", label: "Orçamento e meta", sub: true },
