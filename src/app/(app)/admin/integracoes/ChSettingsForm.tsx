@@ -15,6 +15,7 @@ export type ChFormInitial = {
   accountId: number | null;
   enabled: boolean;
   importPayables: boolean;
+  importReceivables: boolean;
   importSales: boolean;
   paidAffectBalance: boolean;
   salesAffectBalance: boolean;
@@ -93,9 +94,17 @@ export function ChSettingsForm({ initial, accounts }: { initial: ChFormInitial; 
           <input type="checkbox" name="importPayables" defaultChecked={initial.importPayables} /> Importar contas a pagar
         </label>
         <label className="check">
+          <input type="checkbox" name="importReceivables" defaultChecked={initial.importReceivables} /> Importar contas a receber
+        </label>
+        <label className="check">
           <input type="checkbox" name="importSales" defaultChecked={initial.importSales} /> Importar vendas (notas de saída)
         </label>
       </div>
+      <p className="help" style={{ margin: 0 }}>
+        Contas a receber: o CH manda as em aberto (entram em Contas a receber e na projeção) e as já recebidas. Tudo que mudar lá (valor, vencimento,
+        baixa, exclusão) é atualizado aqui, sem duplicar. Se &quot;Somar as vendas do dia no saldo&quot; estiver marcado, os recebimentos ficam só para consulta,
+        porque a venda já entrou no saldo no dia dela. Assim nada conta em dobro.
+      </p>
       <fieldset className="stack" style={{ gap: 8, border: "1px solid var(--line)", borderRadius: 8, padding: "10px 14px" }}>
         <legend className="small" style={{ padding: "0 6px" }}>
           Saldo

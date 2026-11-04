@@ -186,6 +186,7 @@ export default async function IntegracoesPage({ searchParams }: { searchParams: 
             accountId: settings?.accountId ?? defaultAccount?.id ?? null,
             enabled: settings?.enabled ?? true,
             importPayables: settings?.importPayables ?? true,
+            importReceivables: settings?.importReceivables ?? false,
             importSales: settings?.importSales ?? true,
             paidAffectBalance: settings?.paidAffectBalance ?? false,
             salesAffectBalance: settings?.salesAffectBalance ?? false,
@@ -216,12 +217,12 @@ export default async function IntegracoesPage({ searchParams }: { searchParams: 
         </div>
       )}
 
-      {importedReceivables.n > 0 && (
+      {importedReceivables.n > 0 && !settings?.importReceivables && (
         <div className="card">
           <h2>Títulos a receber importados</h2>
           <p style={{ marginBottom: 12 }}>
             Há <b>{importedReceivables.n}</b> títulos a receber vindos do CHServer no caixa, somando <b>{formatMoney(Number(importedReceivables.total))}</b>.
-            O contas a receber do CH não é mais importado; remova esses títulos antigos para eles saírem do caixa. Lançamentos feitos à mão não são
+            A importação de contas a receber está desligada; se quiser, remova esses títulos antigos para eles saírem do caixa. Lançamentos feitos à mão não são
             afetados, e a remoção fica registrada no log.
           </p>
           <ActionForm action={clearImportedReceivables} className="form">

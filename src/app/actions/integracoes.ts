@@ -41,11 +41,10 @@ export async function saveChSettings(_prev: ActionState, fd: FormData): Promise<
     const admin = await requireAdmin();
     const { cfg, account, current, tokenChanged } = await readForm(fd);
     const enabled = fd.get("enabled") !== "off";
-    // O contas a receber do CH não é usado e nunca é importado.
-    const importReceivables = false;
+    const importReceivables = fd.get("importReceivables") === "on";
     const importPayables = fd.get("importPayables") === "on";
     const importSales = fd.get("importSales") === "on";
-    if (!importPayables && !importSales) throw new UserError("Marque o que importar: contas a pagar e/ou vendas.");
+    if (!importPayables && !importReceivables && !importSales) throw new UserError("Marque o que importar: contas a pagar, a receber e/ou vendas.");
     // Saldo: por padrão nada do CH entra; o saldo inicial é lançado à mão.
     const paidAffectBalance = fd.get("paidAffectBalance") === "on";
     const salesAffectBalance = fd.get("salesAffectBalance") === "on";
@@ -76,7 +75,7 @@ export async function saveChSettings(_prev: ActionState, fd: FormData): Promise<
     // O token nunca vai para o log: registramos apenas se ele foi trocado.
     const visible = (v: typeof values | typeof current) =>
       v && { endereco: v.baseUrl, cnpj: v.cnpj, chave: v.companyKey, empresa: v.companyId, conta: v.accountId, ativa: v.enabled,
-        pagar: v.importPayables, vendas: v.importSales, pagasNoSaldo: v.paidAffectBalance, vendasNoSaldo: v.salesAffectBalance, saldoDesde: v.balanceFrom };
+        pagar: v.importPayables, receber: v.importReceivables, vendas: v.importSales, pagasNoSaldo: v.paidAffectBalance, vendasNoSaldo: v.salesAffectBalance, saldoDesde: v.balanceFrom };
     await logChange({
       user: admin,
       companyId: account.companyId,

@@ -14,8 +14,8 @@ export type ChSettings = {
   companyId: number;
   accountId: number;
   origin: "tela" | "variaveis";
-  // O contas a receber do CH não é usado: só Pagar é importado.
-  kinds: "Pagar"[];
+  // Títulos importados: contas a pagar e, se marcado, contas a receber.
+  kinds: ("Receber" | "Pagar")[];
   sales: boolean;
   balance: BalanceRules;
   // Ainda falta trazer o histórico de vendas (12 meses) uma vez.
@@ -44,7 +44,7 @@ export async function loadChSettings(): Promise<ChSettings | null> {
       companyId: row.companyId,
       accountId: row.accountId,
       origin: "tela",
-      kinds: row.importPayables ? ["Pagar"] : [],
+      kinds: [...(row.importPayables ? (["Pagar"] as const) : []), ...(row.importReceivables ? (["Receber"] as const) : [])],
       sales: row.importSales,
       balance: { paid: row.paidAffectBalance, sales: row.salesAffectBalance, from: row.balanceFrom },
       salesHistory: !row.salesBackfilledAt,
@@ -119,7 +119,9 @@ async function runSync(triggeredBy: { id: number; name: string } | null): Promis
         const t = mapTitle(kind, r);
         if (!t) continue;
         // Pago fora das regras do saldo: fica guardado só para consulta (filtro "Pagos"), sem mexer no saldo.
-        titles.push({ ...t, offBalance: !!t.paidAt && !countsInBalance(settings.balance, "paid", t.paidAt) });
+        // Recebimento com "vendas do dia no saldo" ligado também fica fora: a venda já entrou no saldo no dia dela (não conta em dobro).
+        const outside = !countsInBalance(settings.balance, "paid", t.paidAt ?? "") || (kind === "Receber" && settings.balance.sales);
+        titles.push({ ...t, offBalance: !!t.paidAt && outside });
       }
     }
 
@@ -183,14 +185,21 @@ async function runSync(triggeredBy: { id: number; name: string } | null): Promis
     const removed = toRemove.length;
     const warning = suspicious ? ` Atenção: ${gone.length} títulos não vieram nesta leitura; por segurança eles não foram removidos.` : "";
     const open = titles.filter((t) => !t.paidAt);
-    const paidOff = titles.filter((t) => t.offBalance).length;
     const openTotal = open.reduce((sum, t) => sum + t.amount, 0);
+    const summary = (type: "saida" | "entrada", label: string, paidWord: string) => {
+      const list = titles.filter((t) => t.type === type);
+      const o = list.filter((t) => !t.paidAt);
+      const off = list.filter((t) => t.offBalance).length;
+      return `${label}: ${o.length} em aberto (${formatMoney(o.reduce((s, t) => s + t.amount, 0))}) e ${list.length - o.length} ${paidWord}${off ? ` (${off} só para consulta, fora do saldo)` : ""}.`;
+    };
 
     const salesInfo = settings.sales ? await syncSales(cfg, companyId, accountId, settings.balance, settings.salesHistory) : null;
     const parts: string[] = [];
+    if (kinds.includes("Pagar")) parts.push(summary("saida", "Contas a pagar", "pagas"));
+    if (kinds.includes("Receber")) parts.push(summary("entrada", "Contas a receber", "recebidas"));
     if (kinds.length)
       parts.push(
-        `Contas a pagar: ${open.length} em aberto (${formatMoney(openTotal)}) e ${titles.length - open.length} pagas${paidOff ? ` (${paidOff} só para consulta, fora do saldo)` : ""}; ${created} novas, ${updated} atualizadas${removed ? `, ${removed} removidas por estarem canceladas, excluídas ou não existirem mais no CHServer` : ""}${discarded.size ? `; ${discarded.size} canceladas ou excluídas no CH foram ignoradas` : ""}.${warning}`,
+        `Títulos: ${created} novos, ${updated} atualizados${removed ? `, ${removed} removidos por estarem cancelados, excluídos ou não existirem mais no CHServer` : ""}${discarded.size ? `; ${discarded.size} cancelados ou excluídos no CH foram ignorados` : ""}.${warning}`,
       );
     if (salesInfo) parts.push(salesInfo.message);
     const message = parts.join(" ");
@@ -342,6 +351,7 @@ export function importedOutsideBalance(rules: BalanceRules) {
     isNull(transactions.deletedAt),
     eq(transactions.offBalance, false),
     sql`${transactions.paidAt} is not null`,
-    sql`((${transactions.externalId} like 'pagar:%' and ${outside(rules.paid)}) or (${transactions.externalId} like 'vendas:%' and ${outside(rules.sales)}))`,
+    // Recebimentos do CH: mesma regra das pagas; com vendas do dia no saldo, ficam sempre fora (a venda já contou).
+    sql`((${transactions.externalId} like 'pagar:%' and ${outside(rules.paid)}) or (${transactions.externalId} like 'receber:%' and (${outside(rules.paid)} or ${rules.sales})) or (${transactions.externalId} like 'vendas:%' and ${outside(rules.sales)}))`,
   );
 }
