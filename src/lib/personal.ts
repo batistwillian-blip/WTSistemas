@@ -29,6 +29,7 @@ export async function personalRows(personalId: number, from: string, to: string)
         eq(transactions.companyId, personalId),
         isNull(transactions.deletedAt),
         eq(transactions.offBalance, false),
+        eq(transactions.balanceAdjustment, false),
         sql`${transactions.dueDate} between ${from} and ${to}`,
       ),
     )

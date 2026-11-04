@@ -300,7 +300,7 @@ details.box[open] summary { margin-bottom: 12px; }
 @media (max-width: 900px) { .insight { grid-template-columns: 1fr; } }
 
 /* Janela de baixa (pagar/receber) */
-.dialog { text-align: left; border: 1px solid var(--line); border-radius: 12px; padding: 20px; width: min(560px, calc(100vw - 32px)); background: var(--surface); color: var(--ink); box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25); }
+.dialog { text-align: left; font-family: var(--f-ui); white-space: normal; letter-spacing: normal; font-size: 14px; border: 1px solid var(--line); border-radius: 12px; padding: 20px; width: min(560px, calc(100vw - 32px)); background: var(--surface); color: var(--ink); box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25); }
 .dialog::backdrop { background: rgba(10, 12, 20, 0.45); }
 .dialog .form { gap: 14px; }
 .repeat { border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 12px; background: var(--sunk); }
@@ -400,3 +400,7 @@ details.box[open] summary { margin-bottom: 12px; }
 .budget-form { display: grid; grid-template-columns: minmax(0, 1fr) 160px 120px; gap: 8px 14px; align-items: center; }
 .budget-form .h { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
 @media (max-width: 520px) { .hist-bars span { width: 10px; } .budget-form { grid-template-columns: minmax(0, 1fr) 120px; } .budget-form .avg { display: none; } }
+.acc-row { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.acc-row > .form { flex: 1 1 600px; }
+.acc-row > .btn { margin-bottom: 2px; }
+.num .btn { font-family: var(--f-ui); letter-spacing: normal; }

@@ -6,6 +6,8 @@ import { today } from "./format";
 
 // Lançamentos "fora do saldo" (pagos importados do CH só para consulta) não aparecem em saldo, totais nem listas de lançamentos.
 const notDeleted = and(isNull(transactions.deletedAt), eq(transactions.offBalance, false));
+// Ajuste de saldo entra no saldo das contas, mas fica fora de receitas, despesas e contas a pagar/receber.
+const notAdjustment = eq(transactions.balanceAdjustment, false);
 const signedAmount = sql<number>`case when ${transactions.type} = 'entrada' then ${transactions.amount} else -${transactions.amount} end`;
 
 export async function getAccounts(companyIds: number[], onlyActive = false) {
@@ -68,6 +70,7 @@ export async function pendingItems(companyIds: number[], untilDue?: string) {
     .where(
       and(
         inArray(transactions.companyId, companyIds),
+        notAdjustment,
         isNull(transactions.paidAt),
         notDeleted,
         untilDue ? lte(transactions.dueDate, untilDue) : undefined,
@@ -90,6 +93,7 @@ export async function realizedTotals(companyIds: number[], from: string, to: str
     .where(
       and(
         inArray(transactions.companyId, companyIds),
+        notAdjustment,
         notDeleted,
         isNotNull(transactions.paidAt),
         isNull(transactions.transferId),
@@ -250,6 +254,7 @@ export async function billsInRange(
     .where(
       and(
         inArray(transactions.companyId, companyIds),
+        notAdjustment,
         isNull(transactions.deletedAt),
         eq(transactions.type, type),
         sql`${col} between ${from} and ${to}`,
@@ -270,6 +275,7 @@ export async function partiesOf(companyIds: number[], type: "entrada" | "saida")
     .where(
       and(
         inArray(transactions.companyId, companyIds),
+        notAdjustment,
         isNull(transactions.deletedAt),
         eq(transactions.type, type),
         isNotNull(transactions.counterpart),
@@ -311,6 +317,7 @@ export async function paidBills(companyIds: number[], type: "entrada" | "saida",
     .where(
       and(
         inArray(transactions.companyId, companyIds),
+        notAdjustment,
         isNull(transactions.deletedAt),
         eq(transactions.type, type),
         isNotNull(transactions.paidAt),
@@ -338,6 +345,7 @@ export async function monthlyTotals(companyIds: number[], from: string, to: stri
     .where(
       and(
         inArray(transactions.companyId, companyIds),
+        notAdjustment,
         notDeleted,
         isNotNull(transactions.paidAt),
         isNull(transactions.transferId),
@@ -360,6 +368,7 @@ export async function categoryTotals(companyIds: number[], from: string, to: str
     .where(
       and(
         inArray(transactions.companyId, companyIds),
+        notAdjustment,
         notDeleted,
         isNotNull(transactions.paidAt),
         isNull(transactions.transferId),
@@ -448,6 +457,7 @@ export async function launchedByMonth(companyIds: number[], from: string, to: st
     .where(
       and(
         inArray(transactions.companyId, companyIds),
+        notAdjustment,
         notDeleted,
         isNull(transactions.transferId),
         sql`coalesce(${transactions.externalId}, '') not like 'vendas:%'`,

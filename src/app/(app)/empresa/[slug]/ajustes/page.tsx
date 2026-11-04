@@ -1,5 +1,7 @@
 import { saveAccount, saveCategory, saveTip, toggleCategory, toggleTip } from "@/app/actions/ajustes";
 import { PageHead } from "@/components/PageHead";
+import { today } from "@/lib/format";
+import { AdjustBalanceButton } from "@/components/AdjustBalanceButton";
 import { ActionForm } from "@/components/ActionForm";
 import { Submit } from "@/components/FormStatus";
 import { Money } from "@/components/Money";
@@ -55,42 +57,47 @@ export default async function AjustesPage({ params }: { params: Promise<{ slug: 
         <div>
           <h2>Contas (caixa físico, bancos, carteiras)</h2>
           <p className="small muted">
-            O saldo inicial é o valor que a conta tinha antes do primeiro lançamento no sistema. Contas inativas somem dos formulários, mas o histórico
-            fica.
+            Para acertar o saldo com o extrato ou o caixa contado, use &quot;Ajustar saldo&quot;: informe o valor real e o sistema lança a diferença (não conta
+            como receita nem despesa). O saldo inicial é o valor que a conta tinha antes do primeiro lançamento no sistema. Contas inativas somem dos
+            formulários, mas o histórico fica.
           </p>
         </div>
         {accounts.map((a) => (
-          <ActionForm key={a.id} action={saveAccount} className="form">
-            <input type="hidden" name="companyId" value={company.id} />
-            <input type="hidden" name="id" value={a.id} />
-            <div className="filters">
-              <label>
-                Nome
-                <input name="name" defaultValue={a.name} required maxLength={80} />
-              </label>
-              <label>
-                Tipo
-                <KindSelect value={a.kind} />
-              </label>
-              <label>
-                Saldo inicial (R$)
-                <input name="initialBalance" defaultValue={(a.initialBalance / 100).toFixed(2).replace(".", ",")} inputMode="decimal" />
-              </label>
-              <label>
-                Situação
-                <select name="active" defaultValue={a.active ? "on" : "off"}>
-                  <option value="on">Ativa</option>
-                  <option value="off">Inativa</option>
-                </select>
-              </label>
-              <div className="small" style={{ minWidth: 140 }}>
-                Saldo hoje
-                <br />
-                <Money value={balanceOf.get(a.id) ?? 0} colored />
+          <div key={a.id} className="acc-row">
+            <ActionForm action={saveAccount} className="form">
+              <input type="hidden" name="companyId" value={company.id} />
+              <input type="hidden" name="id" value={a.id} />
+              <div className="filters">
+                <label>
+                  Nome
+                  <input name="name" defaultValue={a.name} required maxLength={80} />
+                </label>
+                <label>
+                  Tipo
+                  <KindSelect value={a.kind} />
+                </label>
+                <label>
+                  Saldo inicial (R$)
+                  <input name="initialBalance" defaultValue={(a.initialBalance / 100).toFixed(2).replace(".", ",")} inputMode="decimal" />
+                </label>
+                <label>
+                  Situação
+                  <select name="active" defaultValue={a.active ? "on" : "off"}>
+                    <option value="on">Ativa</option>
+                    <option value="off">Inativa</option>
+                  </select>
+                </label>
+                <div className="small" style={{ minWidth: 140 }}>
+                  Saldo hoje
+                  <br />
+                  <Money value={balanceOf.get(a.id) ?? 0} colored />
+                </div>
+                <Submit className="btn">Salvar</Submit>
               </div>
-              <Submit className="btn">Salvar</Submit>
-            </div>
-          </ActionForm>
+            </ActionForm>
+            {/* Fora do formulário da conta: formulário dentro de formulário não vale em HTML. */}
+            {!a.viaCompany && <AdjustBalanceButton account={{ id: a.id, name: a.name, balance: balanceOf.get(a.id) ?? 0 }} today={today()} />}
+          </div>
         ))}
         <details className="box">
           <summary>Adicionar conta</summary>
@@ -167,7 +174,9 @@ export default async function AjustesPage({ params }: { params: Promise<{ slug: 
       <div className="card stack" id="dicas">
         <div>
           <h2>Dicas do calendário</h2>
-          <p className="small muted">Aparecem no painel no mês escolhido (e como &quot;prepare-se&quot; no mês anterior). Desative as que não fizerem sentido para a empresa.</p>
+          <p className="small muted">
+            Aparecem no painel no mês escolhido (e como &quot;prepare-se&quot; no mês anterior). Desative as que não fizerem sentido para a empresa.
+          </p>
         </div>
         {tips.map((t) => (
           <details key={t.id} className="box" style={t.active ? undefined : { opacity: 0.55 }}>

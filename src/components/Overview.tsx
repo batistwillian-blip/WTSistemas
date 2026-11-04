@@ -3,6 +3,7 @@ import type { CompanyWithRole } from "@/lib/access";
 import { monthClose, monthOutlook, weekBuckets, type MonthClose } from "@/lib/finance";
 import { addDays, addMonths, formatDate, formatMoney, monthEnd, monthStart, today } from "@/lib/format";
 import { accountKindLabels, companyDescriptions } from "@/lib/labels";
+import { AdjustBalanceButton } from "./AdjustBalanceButton";
 import { accountBalances, launchedByMonth, monthlyTotals, pendingItems, realizedTotals, salesTotal, tipsFor } from "@/lib/queries";
 import { greeting, verseOfDay } from "@/lib/verses";
 import { roleAllows } from "@/lib/roles";
@@ -679,6 +680,11 @@ export async function Overview({
                     <td className="num">
                       <Money value={b.balance} colored />
                     </td>
+                    {!consolidated && roleAllows(byId.get(b.companyId)?.role, "gerir") && (
+                      <td className="num" style={{ width: 1, whiteSpace: "nowrap" }}>
+                        <AdjustBalanceButton account={{ id: b.id, name: b.name, balance: b.balance }} today={d0} className="btn sm" />
+                      </td>
+                    )}
                   </tr>
                 ))}
             </tbody>

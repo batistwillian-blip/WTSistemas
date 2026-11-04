@@ -3,10 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { accounts, categories, seasonalTips } from "@/db/schema";
+import { accounts, categories, seasonalTips, transactions } from "@/db/schema";
 import { requireCompanyId } from "@/lib/access";
 import { logChange } from "@/lib/audit";
-import { guard, int, money, str, UserError, type ActionState } from "@/lib/form";
+import { guard, int, isoDate, money, optStr, str, UserError, type ActionState } from "@/lib/form";
+import { formatMoney, today } from "@/lib/format";
+import { accountBalances } from "@/lib/queries";
 
 export async function saveAccount(_prev: ActionState, fd: FormData): Promise<ActionState> {
   return guard(async () => {
@@ -100,4 +102,53 @@ export async function toggleTip(fd: FormData) {
   const [after] = await db.update(seasonalTips).set({ active: !before.active }).where(eq(seasonalTips.id, id)).returning();
   await logChange({ user, companyId: before.companyId, action: "editar", entity: "dica", entityId: id, before, after });
   revalidatePath("/", "layout");
+}
+
+/**
+ * Ajustar saldo: a pessoa informa o saldo real da conta numa data e o sistema lança a diferença.
+ * O ajuste mexe no saldo, mas não conta como receita ou despesa, nem aparece em contas a pagar/receber. Fica no log.
+ */
+export async function adjustBalance(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  return guard(async () => {
+    const accountId = int(fd, "accountId");
+    const [account] = accountId ? await db.select().from(accounts).where(eq(accounts.id, accountId)) : [];
+    if (!account) throw new UserError("Conta não encontrada.");
+    if (account.viaCompany) throw new UserError("Esta conta técnica não tem saldo para ajustar.");
+    const { user } = await requireCompanyId(account.companyId, "gerir");
+    const real = money(fd, "real");
+    if (real === null) throw new UserError("Informe o saldo real da conta.");
+    const date = isoDate(fd, "date") ?? today();
+    if (date > today()) throw new UserError("A data do ajuste não pode ser no futuro.");
+    const [current] = (await accountBalances([account.companyId], date)).filter((b) => b.id === account.id);
+    const diff = real - (current?.balance ?? 0);
+    if (diff === 0) return { ok: `O saldo já confere: ${formatMoney(real)}.` };
+    const note = optStr(fd, "notes", 300);
+    const [tx] = await db
+      .insert(transactions)
+      .values({
+        companyId: account.companyId,
+        accountId: account.id,
+        type: diff > 0 ? "entrada" : "saida",
+        description: "Ajuste de saldo",
+        amount: Math.abs(diff),
+        dueDate: date,
+        paidAt: date,
+        competence: date.slice(0, 8) + "01",
+        notes: note ?? `Saldo no sistema ${formatMoney(current?.balance ?? 0)} → saldo real ${formatMoney(real)}`,
+        balanceAdjustment: true,
+        createdBy: user.id,
+      })
+      .returning();
+    await logChange({
+      user,
+      companyId: account.companyId,
+      action: "ajustar_saldo",
+      entity: "conta",
+      entityId: account.id,
+      before: { conta: account.name, saldo: current?.balance ?? 0, data: date },
+      after: { saldo: real, diferenca: diff, lancamento: tx.id },
+    });
+    revalidatePath("/", "layout");
+    return { ok: `Saldo ajustado para ${formatMoney(real)} (${diff > 0 ? "+" : "−"}${formatMoney(Math.abs(diff))}).` };
+  });
 }

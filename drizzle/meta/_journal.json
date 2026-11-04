@@ -92,6 +92,13 @@
       "when": 1793752027667,
       "tag": "0012_pessoal",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793752769653,
+      "tag": "0013_ajuste_saldo",
+      "breakpoints": true
     }
   ]
 }

@@ -187,6 +187,8 @@ export const transactions = pgTable(
     withdrawalAccountId: integer("retirada_conta_id").references((): AnyPgColumn => accounts.id),
     // Na empresa: a retirada espelha este lançamento pessoal.
     personalOf: integer("origem_pessoal_id").references((): AnyPgColumn => transactions.id),
+    // Ajuste de saldo: acerta o saldo da conta com o valor real do banco/caixa. Mexe no saldo, mas não é receita nem despesa.
+    balanceAdjustment: boolean("ajuste_saldo").notNull().default(false),
   },
   (t) => [
     index("lancamentos_empresa_venc_idx").on(t.companyId, t.dueDate),

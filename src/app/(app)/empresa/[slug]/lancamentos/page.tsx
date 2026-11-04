@@ -146,6 +146,7 @@ export default async function LancamentosPage({ params, searchParams }: { params
                       {tx.partialOf && <span className="badge amber">pagamento parcial</span>}{" "}
                       {tx.originalAmount !== null && !tx.paidAt && <span className="badge amber">restante de {formatMoney(tx.originalAmount)}</span>}{" "}
                       {tx.transferId && <span className="badge">entre empresas</span>}{" "}
+                      {tx.balanceAdjustment && <span className="badge amber">ajuste de saldo</span>}{" "}
                       {!manual && <span className="badge blue">CHServer</span>}
                     </td>
                     <td className="small">{categoryName ?? tx.externalCategory ?? ""}</td>
