@@ -74,6 +74,11 @@ export async function Overview({
   // No consolidado, transferências entre as empresas se anulam e não são receita nem despesa.
   const relevant = consolidated ? pending.filter((p) => !p.transferId) : pending;
   const balance = sumBy(balances, (b) => b.balance);
+  // Contas que a pessoa pode acertar com o saldo real (atalho no topo, perto do "Saldo hoje").
+  const adjustable = balances
+    .filter((b) => roleAllows(companies.find((c) => c.id === b.companyId)?.role, "gerir"))
+    .sort((a, b) => Number(b.active) - Number(a.active))
+    .map((b) => ({ id: b.id, name: consolidated ? `${b.name} · ${companies.find((c) => c.id === b.companyId)?.name}` : b.name, balance: b.balance }));
   const close = monthClose(balance, relevant, d0, to);
   const outlook = monthOutlook(balance, relevant, d0, outlookMonths);
   const selOutlook = outlook.find((o) => o.month === sel) ?? null;
@@ -429,6 +434,12 @@ export async function Overview({
                 <b className={`num ${close.endBalance < 0 ? "neg" : "pos"}`}>{formatMoney(close.endBalance)}</b>
               </div>
             </div>
+            {adjustable.length > 0 && (
+              <div className="adjust-line">
+                <span className="small muted">O saldo hoje não bate com o banco ou o caixa?</span>
+                <AdjustBalanceButton accounts={adjustable} today={d0} className="btn sm" label="Ajustar saldo" />
+              </div>
+            )}
             <div className="meter" title="Quanto das contas a pagar do mês já está coberto pelo saldo e pelo que vai entrar">
               <div style={{ width: `${Math.round(covered * 100)}%` }} />
             </div>

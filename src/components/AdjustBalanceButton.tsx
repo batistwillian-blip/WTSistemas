@@ -8,13 +8,20 @@ import { Feedback } from "./FormStatus";
 /** "Ajustar saldo": informa quanto tem de verdade na conta e o sistema lança a diferença (fora de receitas e despesas). */
 export function AdjustBalanceButton({
   account,
+  accounts,
   today,
   className = "btn sm",
+  label = "Ajustar saldo",
 }: {
-  account: { id: number; name: string; balance: number };
+  /** Uma conta só, ou uma lista para escolher no próprio formulário. */
+  account?: { id: number; name: string; balance: number };
+  accounts?: { id: number; name: string; balance: number }[];
   today: string;
   className?: string;
+  label?: string;
 }) {
+  const list = accounts ?? (account ? [account] : []);
+  const [selected, setSelected] = useState(list[0]?.id ?? 0);
   const ref = useRef<HTMLDialogElement>(null);
   const [state, run, pending] = useActionState(adjustBalance, undefined);
   const [real, setReal] = useState("");
@@ -22,12 +29,13 @@ export function AdjustBalanceButton({
   useEffect(() => {
     if (state?.ok) ref.current?.close();
   }, [state]);
+  const acc = list.find((a) => a.id === selected) ?? list[0];
   const cents = parseMoney(real);
-  const diff = cents === null ? null : cents - account.balance;
+  const diff = cents === null ? null : cents - acc.balance;
   return (
     <>
       <button className={className} type="button" onClick={() => ref.current?.showModal()}>
-        Ajustar saldo
+        {label}
       </button>
       {state?.ok && <span className="small muted"> {state.ok}</span>}
       <dialog ref={ref} className="dialog" onClick={(e) => e.target === ref.current && ref.current?.close()}>
@@ -39,13 +47,25 @@ export function AdjustBalanceButton({
             startTransition(() => run(fd));
           }}
         >
-          <input type="hidden" name="accountId" value={account.id} />
+          <input type="hidden" name="accountId" value={acc.id} />
           <div>
-            <h2 style={{ margin: 0 }}>Ajustar saldo: {account.name}</h2>
+            <h2 style={{ margin: 0 }}>Ajustar saldo{list.length === 1 ? `: ${acc.name}` : ""}</h2>
             <p className="muted small" style={{ margin: "4px 0 0" }}>
-              No sistema hoje: <b className="num">{formatMoney(account.balance)}</b>. Informe quanto tem de verdade na conta (extrato ou caixa contado).
+              No sistema hoje: <b className="num">{formatMoney(acc.balance)}</b>. Informe quanto tem de verdade na conta (extrato ou caixa contado).
             </p>
           </div>
+          {list.length > 1 && (
+            <label>
+              Conta
+              <select value={selected} onChange={(e) => setSelected(Number(e.target.value))}>
+                {list.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} (no sistema: {formatMoney(a.balance)})
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <div className="fields">
             <label>
               Saldo real (R$)

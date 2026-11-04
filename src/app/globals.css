@@ -404,3 +404,4 @@ details.box[open] summary { margin-bottom: 12px; }
 .acc-row > .form { flex: 1 1 600px; }
 .acc-row > .btn { margin-bottom: 2px; }
 .num .btn { font-family: var(--f-ui); letter-spacing: normal; }
+.adjust-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
