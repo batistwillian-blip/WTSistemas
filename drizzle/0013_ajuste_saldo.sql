@@ -1,0 +1,1 @@
+ALTER TABLE "lancamentos" ADD COLUMN "ajuste_saldo" boolean DEFAULT false NOT NULL;
