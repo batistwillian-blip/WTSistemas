@@ -35,12 +35,15 @@ export default async function LancamentosPage({ params, searchParams }: { params
     getAccounts([company.id]),
   ]);
 
-  // Mesmo critério da visão geral: transferências entre empresas não contam como entrada ou saída.
-  const realized = rows.filter((r) => r.tx.paidAt && !r.tx.transferId);
+  const d0 = today();
+  // Mesmo critério da visão geral: transferências e ajustes não contam como entrada ou saída.
+  // Baixa com data futura (agendada) ainda não aconteceu: fica fora do realizado e do saldo até o dia.
+  const realized = rows.filter((r) => r.tx.paidAt && r.tx.paidAt <= d0 && !r.tx.transferId && !r.tx.balanceAdjustment);
+  const scheduled = rows.filter((r) => r.tx.paidAt && r.tx.paidAt > d0 && !r.tx.transferId);
+  const scheduledNet = scheduled.reduce((s, r) => s + (r.tx.type === "entrada" ? r.tx.amount : -r.tx.amount), 0);
   const paidIn = realized.filter((r) => r.tx.type === "entrada").reduce((s, r) => s + r.tx.amount, 0);
   const paidOut = realized.filter((r) => r.tx.type === "saida").reduce((s, r) => s + r.tx.amount, 0);
   const canLaunch = roleAllows(role, "lancar");
-  const d0 = today();
 
   return (
     <div className="stack">
@@ -64,7 +67,15 @@ export default async function LancamentosPage({ params, searchParams }: { params
           <span className={`v ${paidIn - paidOut < 0 ? "neg" : ""}`}>{formatMoney(paidIn - paidOut)}</span>
         </div>
         <div className="small muted" style={{ alignSelf: "flex-end" }}>
-          No filtro abaixo, sem contar transferências entre empresas.
+          No filtro abaixo, até hoje, sem contar transferências entre empresas.
+          {scheduled.length > 0 && (
+            <>
+              {" "}
+              <b className="amber-text">
+                {scheduled.length} {scheduled.length === 1 ? "baixa agendada" : "baixas agendadas"} para depois de hoje ({formatMoney(scheduledNet)}): só entram no saldo na data.
+              </b>
+            </>
+          )}
         </div>
       </div>
 
@@ -152,7 +163,11 @@ export default async function LancamentosPage({ params, searchParams }: { params
                     <td className="small">{categoryName ?? tx.externalCategory ?? ""}</td>
                     <td className="small">{accountName}</td>
                     <td>
-                      {tx.paidAt ? (
+                      {tx.paidAt && tx.paidAt > d0 ? (
+                        <span className="badge amber" title="Data do pagamento no futuro: ainda não entrou no saldo">
+                          Agendado · {formatDate(tx.paidAt).slice(0, 5)}
+                        </span>
+                      ) : tx.paidAt ? (
                         <span className="badge green">{tx.type === "entrada" ? "Recebido" : "Pago"}</span>
                       ) : (
                         <span className={`badge ${overdue ? "red" : "amber"}`}>

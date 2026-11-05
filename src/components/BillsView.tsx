@@ -364,7 +364,9 @@ export async function BillsView({
                     const parcel = installmentLabel(r);
                     const badge =
                       s === "paga"
-                        ? [`${entrada ? "Recebida" : "Paga"} ${ddmm(r.paidAt!)}`, "green"]
+                        ? r.paidAt! > d0
+                          ? [`Agendada ${ddmm(r.paidAt!)}`, "amber"]
+                          : [`${entrada ? "Recebida" : "Paga"} ${ddmm(r.paidAt!)}`, "green"]
                         : s === "vencida"
                           ? [`Vencida há ${Math.round((Date.parse(d0) - Date.parse(r.dueDate)) / 86_400_000)}d`, "red"]
                           : s === "hoje"

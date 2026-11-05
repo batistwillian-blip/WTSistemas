@@ -105,6 +105,9 @@ export default async function PessoalPage({ searchParams }: { searchParams: Sear
           )}
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Link className="btn sm" href={`${base}/lancamentos/novo?tipo=entrada&retirada=1`} title="Dinheiro que você tirou de uma empresa para a conta pessoal">
+            + Retirada da empresa
+          </Link>
           <Link className="btn sm" href={`${base}/lancamentos/novo?tipo=entrada`}>
             + Nova renda
           </Link>
@@ -133,8 +136,8 @@ export default async function PessoalPage({ searchParams }: { searchParams: Sear
           <span className="label">Renda do mês</span>
           <span className="value pos">{formatMoney(sum.income)}</span>
           <span className="sub">
-            Pró-labore e outras {formatMoney(sum.ownIncome)}
-            {sum.viaCompany > 0 && <> · pago pelas empresas {formatMoney(sum.viaCompany)}</>}
+            Retiradas e outras rendas {formatMoney(sum.ownIncome)}
+            {sum.viaCompany > 0 && <> · gastos pagos pelas empresas {formatMoney(sum.viaCompany)}</>}
           </span>
         </div>
         <div className="card kpi">

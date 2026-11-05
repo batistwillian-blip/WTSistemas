@@ -189,7 +189,14 @@ function TransactionFormInner({
         : ([["Conta", account]] as [string, string][])),
       ["Categoria", category],
       ...(personal ? [] : ([["Nº do documento", doc || (isNew ? `Automático${nextDocument ? ` (${nextDocument})` : ""}` : "—")]] as [string, string][])),
-      ["Situação", paidAt ? `Já ${entrada ? "recebida" : "paga"} em ${formatDate(paidAt)}` : "Em aberto"],
+      [
+        "Situação",
+        paidAt
+          ? paidAt > today
+            ? `Agendada para ${formatDate(paidAt)}: só entra no saldo nesse dia`
+            : `Já ${entrada ? "recebida" : "paga"} em ${formatDate(paidAt)}`
+          : "Em aberto",
+      ],
     ];
     if (get("notes")) lines.push(["Observações", get("notes")]);
     if (!isNew && initial.recurrence) lines.push([
@@ -213,6 +220,12 @@ function TransactionFormInner({
               </div>
             ))}
           </dl>
+          {paidAt && paidAt > today && (
+            <div className="alert error" style={{ margin: 0 }}>
+              A data {entrada ? "do recebimento" : "do pagamento"} ({formatDate(paidAt)}) é depois de hoje. Até lá o valor não entra no saldo. Se já{" "}
+              {entrada ? "recebeu" : "pagou"}, volte e corrija a data.
+            </div>
+          )}
           {series && rows && !openEnded ? (
             <>
               <p className="small muted" style={{ margin: 0 }}>

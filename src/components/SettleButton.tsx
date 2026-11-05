@@ -38,6 +38,7 @@ export function SettleButton({
   const [state, run, pending] = useActionState(settleTransaction, undefined);
   const [interest, setInterest] = useState("");
   const [discount, setDiscount] = useState("");
+  const [future, setFuture] = useState(false);
   const [paid, setPaid] = useState(toInput(item.amount));
   const [touched, setTouched] = useState(false);
   const entrada = item.type === "entrada";
@@ -88,7 +89,8 @@ export function SettleButton({
           <div className="fields">
             <label>
               Data do {entrada ? "recebimento" : "pagamento"}
-              <input name="paidAt" type="date" defaultValue={today} required />
+              <input name="paidAt" type="date" defaultValue={today} required onChange={(e) => setFuture(e.target.value > today)} />
+              {future && <span className="small amber-text">Data depois de hoje: só entra no saldo nesse dia.</span>}
             </label>
             <label>
               {entrada ? "Entrou na conta" : "Saiu da conta"}

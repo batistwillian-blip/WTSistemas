@@ -143,6 +143,7 @@ p { margin: 0; }
 .badge.green { background: var(--good-soft); color: var(--in); }
 .badge.red { background: var(--bad-soft); color: var(--out); }
 .badge.amber { background: var(--warn-soft); color: var(--warn); }
+.amber-text { color: var(--warn); }
 .badge.blue { background: var(--accent-soft); color: var(--accent); }
 .emp { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
 
