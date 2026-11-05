@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth";
 import { addDays, addMonths, formatDate, formatMoney, monthEnd, today } from "@/lib/format";
 import { param, type SearchParams } from "@/lib/page";
 import { personalBudgets, personalCategories, personalRows } from "@/lib/personal";
+import { scheduledItems } from "@/lib/queries";
 import { budgetStatus, bySourceCompany, monthSummary } from "@/lib/personal-calc";
 
 const MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
@@ -56,12 +57,15 @@ export default async function PessoalPage({ searchParams }: { searchParams: Sear
   const to = monthEnd(from);
   const first6 = addMonths(from, -5);
   const base = `/empresa/${personal.slug}`;
-  const [rows6, budgets, cats, upcoming] = await Promise.all([
+  const [rows6, budgets, cats, upcoming, scheduled] = await Promise.all([
     personalRows(personal.id, first6, to),
     personalBudgets(personal.id),
     personalCategories(personal.id),
     personalRows(personal.id, d0, addDays(d0, 30)),
+    // Baixas com data de pagamento depois de hoje: contam no mês do vencimento, mas só entram no saldo no dia.
+    scheduledItems([personal.id], "2999-12-31", d0),
   ]);
+  const scheduledNet = scheduled.reduce((s, r) => s + (r.type === "entrada" ? r.amount : -r.amount), 0);
   const rows = rows6.filter((r) => r.dueDate >= from);
   const sum = monthSummary(rows);
   const names = new Map(cats.map((c) => [c.id, c.name]));
@@ -119,6 +123,19 @@ export default async function PessoalPage({ searchParams }: { searchParams: Sear
           </Link>
         </div>
       </div>
+
+      {scheduled.length > 0 && (
+        <div className="alert error" style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+          <span>
+            {scheduled.length === 1 ? "1 lançamento está" : `${scheduled.length} lançamentos estão`} com data de {scheduled.every((r) => r.type === "entrada") ? "recebimento" : "pagamento"} depois de
+            hoje ({scheduled.map((r) => formatDate(r.dueDate).slice(0, 5)).join(", ")}): <b className="num">{formatMoney(scheduledNet)}</b> ainda fora do saldo. Se o dinheiro já
+            entrou ou saiu, edite e corrija a data de {scheduled.every((r) => r.type === "entrada") ? "recebimento" : "pagamento"} (não só o vencimento).
+          </span>
+          <Link className="btn sm" href={`${base}/lancamentos?mes=${scheduled[0].dueDate.slice(0, 7)}`}>
+            Ver
+          </Link>
+        </div>
+      )}
 
       {alerts.length > 0 && (
         <div className="alert error" style={{ display: "grid", gap: 4 }}>
