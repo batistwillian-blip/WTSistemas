@@ -205,6 +205,11 @@ export default async function LancamentosPage({ params, searchParams }: { params
                             )}
                           </form>
                         )}
+                        {canLaunch && manual && !tx.transferId && !tx.partialOf && (
+                          <Link className="btn sm icon" href={`/empresa/${slug}/lancamentos/${tx.id}`} title="Editar: valor, datas, descrição, conta" aria-label="Editar">
+                            ✎
+                          </Link>
+                        )}
                         {canLaunch && manual && !tx.transferId && !(tx.partialOf && tx.paidAt) && (
                           <DeleteButton item={{ ...tx, seriesOpen, seriesOpenFrom }} />
                         )}
