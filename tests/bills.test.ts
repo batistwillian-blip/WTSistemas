@@ -90,3 +90,17 @@ describe("cadastro de pessoas", () => {
     expect(p.next?.id).toBe(3);
   });
 });
+
+describe("situação a vencer", () => {
+  it("mostra só as em aberto no prazo (inclui hoje), sem vencidas nem pagas", () => {
+    const rows = [
+      row({ id: 1, dueDate: "2026-10-10" }),
+      row({ id: 2, dueDate: "2026-10-15" }),
+      row({ id: 3, dueDate: "2026-10-20" }),
+      row({ id: 4, dueDate: "2026-10-20", paidAt: "2026-10-14" }),
+    ];
+    const f = readBillFilters({ situacao: "avencer" }, D0);
+    expect(applyFilters(rows, f, D0).map((r) => r.id)).toEqual([2, 3]);
+    expect(billRange(readBillFilters({ mes: "todas", situacao: "avencer" }, D0), D0).from).toBe(D0);
+  });
+});

@@ -1,7 +1,7 @@
 import { addDays, addMonths, isValidIsoDate, monthEnd, today } from "./format";
 
 /** Filtros da tela de contas a pagar/receber, lidos da URL. Sem nada: mês atual, todas as situações, por vencimento. */
-export type BillStatus = "todas" | "aberto" | "vencidas" | "pagas";
+export type BillStatus = "todas" | "aberto" | "vencidas" | "avencer" | "pagas";
 export type BillBase = "vencimento" | "pagamento" | "competencia";
 export type BillFilters = {
   /** "AAAA-MM", "todas" (todo o período) ou "periodo" (datas de/até em from/to). */
@@ -26,7 +26,7 @@ const one = (sp: SP, k: string) => {
 export function readBillFilters(sp: SP, d0 = today()): BillFilters {
   const rawStatus = one(sp, "situacao");
   // "pagas" é o nome antigo da aba; continua valendo.
-  const status: BillStatus = rawStatus === "aberto" || rawStatus === "vencidas" || rawStatus === "pagas" ? rawStatus : "todas";
+  const status: BillStatus = rawStatus === "aberto" || rawStatus === "vencidas" || rawStatus === "avencer" || rawStatus === "pagas" ? rawStatus : "todas";
   const rawMonth = one(sp, "mes");
   const de = one(sp, "de");
   const ate = one(sp, "ate");
@@ -49,7 +49,7 @@ export function readBillFilters(sp: SP, d0 = today()): BillFilters {
 /** Intervalo de datas a buscar para os filtros. */
 export function billRange(f: BillFilters, d0 = today()): { from: string; to: string } {
   if (f.month === "periodo" && f.from && f.to) return { from: f.from, to: f.to };
-  if (f.month === "todas") return { from: "1900-01-01", to: f.status === "vencidas" ? addDays(d0, -1) : "2999-12-31" };
+  if (f.month === "todas") return { from: f.status === "avencer" ? d0 : "1900-01-01", to: f.status === "vencidas" ? addDays(d0, -1) : "2999-12-31" };
   return { from: `${f.month}-01`, to: monthEnd(`${f.month}-01`) };
 }
 
@@ -98,6 +98,8 @@ export function applyFilters<T extends BillRow>(rows: T[], f: BillFilters, d0 = 
     if (f.status === "pagas" && s !== "paga") return false;
     if (f.status === "aberto" && s === "paga") return false;
     if (f.status === "vencidas" && s !== "vencida") return false;
+    // A vencer: em aberto e ainda no prazo (inclui as que vencem hoje).
+    if (f.status === "avencer" && (s === "paga" || s === "vencida")) return false;
     if (f.category && categoryOf(r) !== f.category) return false;
     if (f.party && (r.counterpart ?? "") !== f.party) return false;
     if (f.account && r.accountId !== f.account) return false;

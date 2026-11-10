@@ -170,6 +170,28 @@ export async function BillsView({
         </div>
       </div>
 
+      {/* Situação: atalho visível, combina com o mês, "Todo o período", fornecedor/cliente, categoria e busca. */}
+      <div className="tabs status-tabs" role="tablist" aria-label="Situação">
+        {(
+          [
+            ["todas", "Todas"],
+            ["vencidas", entrada ? "Atrasadas" : "Vencidas"],
+            ["avencer", "A vencer"],
+            ["aberto", "Em aberto (todas)"],
+            ["pagas", entrada ? "Recebidas" : "Pagas"],
+          ] as const
+        ).map(([k, l]) => (
+          <Link key={k} href={qs({ situacao: k === "todas" ? null : k })} className={f.status === k ? "on" : undefined} role="tab" aria-selected={f.status === k}>
+            {l}
+          </Link>
+        ))}
+        {f.month !== "todas" && f.status !== "todas" && (
+          <Link href={qs({ mes: "todas" })} className="small" title="Mesma situação, sem limite de mês">
+            em todo o período →
+          </Link>
+        )}
+      </div>
+
       {lateBefore.length > 0 && (
         <div className="alert error" style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
           <span>
