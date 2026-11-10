@@ -7,12 +7,13 @@ import { ActionForm } from "@/components/ActionForm";
 import { Submit } from "@/components/FormStatus";
 import { PageHead } from "@/components/PageHead";
 import { db } from "@/db";
-import { integrationRuns, integrationSettings, transactions } from "@/db/schema";
+import { integrationRuns, integrationSettings, paymentMethodAccounts, sales, transactions } from "@/db/schema";
 import { requireAdmin } from "@/lib/access";
-import { readChConfig, splitBaseUrl } from "@/lib/chserver";
+import { defaultDays, readChConfig, saleNet, salePayments, splitBaseUrl } from "@/lib/chserver";
 import { param, type SearchParams } from "@/lib/page";
 import { allCompanies, getAccounts } from "@/lib/queries";
 import { ChSettingsForm } from "./ChSettingsForm";
+import { PaymentMethodsForm, type MethodRow } from "./PaymentMethodsForm";
 
 function fmt(d: Date) {
   return d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
@@ -76,9 +77,36 @@ export default async function IntegracoesPage({ searchParams }: { searchParams: 
   }
   const names = new Map(companies.map((c) => [c.id, c.name]));
   const loja = companies.find((c) => c.slug === "primetech-loja");
-  const defaultAccount = accounts.find((a) => a.companyId === loja?.id && a.name === "Banco") ?? accounts[0];
+  const defaultAccount = accounts.find((a) => a.companyId === loja?.id && a.name === "Cresol") ?? accounts[0];
   const last = runs[0];
   const configured = !!settings || envConfigured;
+
+  // Formas de pagamento das vendas dos últimos 90 dias, com a conta e o prazo de cada uma.
+  let methodRows: MethodRow[] = [];
+  if (settings) {
+    const [recent, mapped] = await Promise.all([
+      db
+        .select({ payment: sales.payment, total: sales.total, returned: sales.returned, canceled: sales.canceled })
+        .from(sales)
+        .where(and(eq(sales.companyId, settings.companyId), isNull(sales.deletedAt), gte(sales.date, addMonths(d0, -3)))),
+      db.select().from(paymentMethodAccounts).where(eq(paymentMethodAccounts.companyId, settings.companyId)),
+    ]);
+    const seen = new Map<string, { total: number; notes: number }>();
+    for (const r of recent)
+      for (const p of salePayments(r.payment, saleNet(r))) {
+        const cur = seen.get(p.method) ?? { total: 0, notes: 0 };
+        cur.total += p.amount;
+        cur.notes += 1;
+        seen.set(p.method, cur);
+      }
+    const all = new Set([...seen.keys(), ...mapped.map((m) => m.method)]);
+    methodRows = [...all]
+      .map((method) => {
+        const m = mapped.find((x) => x.method === method);
+        return { method, accountId: m?.accountId ?? null, days: m?.days ?? defaultDays(method), ...(seen.get(method) ?? { total: 0, notes: 0 }) };
+      })
+      .sort((a, b) => b.total - a.total);
+  }
 
   return (
     <>
@@ -191,9 +219,30 @@ export default async function IntegracoesPage({ searchParams }: { searchParams: 
             paidAffectBalance: settings?.paidAffectBalance ?? false,
             salesAffectBalance: settings?.salesAffectBalance ?? false,
             balanceFrom: settings?.balanceFrom ?? "",
+            paidAccountId: settings?.paidAccountId ?? null,
           }}
         />
       </div>
+
+      {settings && (
+        <div className="card">
+          <h2>Formas de pagamento das vendas</h2>
+          <p className="help">
+            Cada forma de pagamento das notas cai numa conta, no prazo escolhido: cartão de crédito e débito no dia seguinte (D+1), Pix e dinheiro na hora.
+            O cartão que ainda não caiu aparece como a receber na programação. O prazo conta da data da venda, então importar dias depois dá o mesmo
+            resultado. Só vale para as vendas que entram no saldo (opção acima).
+          </p>
+          {methodRows.length === 0 ? (
+            <p className="muted small">Nenhuma venda importada nos últimos 90 dias ainda.</p>
+          ) : (
+            <PaymentMethodsForm
+              rows={methodRows}
+              accounts={accounts.filter((a) => a.companyId === settings.companyId).map((a) => ({ id: a.id, name: a.name }))}
+              fallback={settings.accountId}
+            />
+          )}
+        </div>
+      )}
 
       {outsideBalance.n > 0 && (
         <div className="card">

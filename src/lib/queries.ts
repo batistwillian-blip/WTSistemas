@@ -128,6 +128,7 @@ export async function scheduledItems(companyIds: number[], until: string, d0 = t
       amount: transactions.amount,
       paidAt: transactions.paidAt,
       transferId: transactions.transferId,
+      accountId: transactions.accountId,
     })
     .from(transactions)
     .where(and(inArray(transactions.companyId, companyIds), notDeleted, sql`${transactions.paidAt} > ${d0}`, lte(transactions.paidAt, until)))

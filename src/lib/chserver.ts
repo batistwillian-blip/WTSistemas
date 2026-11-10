@@ -252,3 +252,62 @@ export function mapSale(r: Record<string, unknown>): ChSale | null {
 export function saleNet(s: Pick<ChSale, "total" | "returned" | "canceled">): number {
   return s.canceled ? 0 : Math.max(0, s.total - s.returned);
 }
+
+/** Forma de pagamento sem informação na nota (ou que não deu para ler). */
+export const UNKNOWN_METHOD = "Não informada";
+
+const LABEL_KEYS = ["DESCRICAO", "DESCFORMAPGTO", "DESCRFORMAPGTO", "FORMAPGTO", "FORMA", "NOMEFORMA", "NOME", "TIPO", "TIPOPGTO"];
+const VALUE_KEYS = ["VALOR", "VLRPAGO", "VALORPAGO", "VLRFORMA", "VLR", "TOTAL"];
+
+/** Nome da forma, limpo: "Cartao (pagsegur) - D" → "Cartao (pagsegur) - D"; sem valor, caixa ou espaços duplos. */
+export function cleanMethod(v: string): string {
+  const s = v
+    .replace(/^FORMA PGTO:\s*/i, "")
+    .replace(/\s+Valor:.*$/i, "")
+    .replace(/\s+-\s+Caixa:.*$/i, "")
+    .replace(/\s+-\s+Venda$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return s.slice(0, 80) || UNKNOWN_METHOD;
+}
+
+/**
+ * Divide o valor líquido da venda pelas formas de pagamento informadas na nota (FORMAPGTO).
+ * Aceita a lista como objetos (descrição + valor) ou textos ("Cartao (visa) - Cr Valor: 25,00").
+ * Sem valores, divide tudo na primeira forma; o que sobrar ou faltar fica na maior forma, para fechar com o líquido.
+ */
+export function salePayments(payment: unknown, net: number): { method: string; amount: number }[] {
+  if (net <= 0) return [];
+  const list: { method: string; amount: number | null }[] = [];
+  for (const p of Array.isArray(payment) ? payment : []) {
+    if (typeof p === "string") {
+      const m = /Valor:\s*([\d.,]+)/i.exec(p);
+      list.push({ method: cleanMethod(p), amount: m ? parseChMoney(m[1]) : null });
+    } else if (p && typeof p === "object") {
+      const r = p as Record<string, unknown>;
+      const label = LABEL_KEYS.map((k) => r[k]).find((v) => typeof v === "string" && v.trim());
+      const value = VALUE_KEYS.map((k) => parseChMoney(r[k])).find((v) => v !== null && v !== undefined);
+      list.push({ method: cleanMethod(String(label ?? "")), amount: value ?? null });
+    }
+  }
+  if (list.length === 0) return [{ method: UNKNOWN_METHOD, amount: net }];
+  const merged = new Map<string, number>();
+  const known = list.filter((l) => l.amount !== null && l.amount > 0);
+  if (known.length === 0) return [{ method: list[0].method, amount: net }];
+  for (const l of known) merged.set(l.method, (merged.get(l.method) ?? 0) + l.amount!);
+  const out = [...merged].map(([method, amount]) => ({ method, amount }));
+  // Troco, desconto ou devolução: acerta a diferença na maior forma para a soma bater com o líquido.
+  const total = out.reduce((s, o) => s + o.amount, 0);
+  if (total !== net) {
+    const scale = net / total;
+    for (const o of out) o.amount = Math.round(o.amount * scale);
+    const diff = net - out.reduce((s, o) => s + o.amount, 0);
+    out.sort((a, b) => b.amount - a.amount)[0].amount += diff;
+  }
+  return out.filter((o) => o.amount > 0);
+}
+
+/** Prazo padrão para cair na conta: cartão de crédito e débito D+1; Pix ("Cartão (pix)", "Vendas outras"), dinheiro e o resto na hora. */
+export function defaultDays(method: string): number {
+  return /cart/i.test(method) && !/pix|outras/i.test(method) ? 1 : 0;
+}

@@ -9,6 +9,7 @@ import { requireCompany } from "@/lib/access";
 import { formatDate, formatMoney, monthEnd, today } from "@/lib/format";
 import { param, type SearchParams } from "@/lib/page";
 import { getAccounts, listTransactions } from "@/lib/queries";
+import { lenderAccounts } from "@/lib/lenders";
 import { roleAllows } from "@/lib/roles";
 
 export default async function LancamentosPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: SearchParams }) {
@@ -23,7 +24,7 @@ export default async function LancamentosPage({ params, searchParams }: { params
   const q = param(sp, "q")?.slice(0, 100) ?? "";
   const conta = Number(param(sp, "conta")) || undefined;
 
-  const [rows, accounts] = await Promise.all([
+  const [rows, accounts, lenders] = await Promise.all([
     listTransactions(company.id, {
       from: `${month}-01`,
       to: monthEnd(`${month}-01`),
@@ -33,6 +34,7 @@ export default async function LancamentosPage({ params, searchParams }: { params
       accountId: conta,
     }),
     getAccounts([company.id]),
+    company.ownerId ? Promise.resolve([]) : lenderAccounts(),
   ]);
 
   const d0 = today();
@@ -185,6 +187,7 @@ export default async function LancamentosPage({ params, searchParams }: { params
                             item={tx}
                             accounts={accounts.filter((a) => (a.active && !a.viaCompany) || a.id === tx.accountId)}
                             today={d0}
+                            lenders={lenders}
                             label={tx.type === "entrada" ? "Receber" : "Pagar"}
                           />
                         )}

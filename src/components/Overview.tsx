@@ -8,6 +8,7 @@ import { accountBalances, launchedByMonth, monthlyTotals, pendingItems, realized
 import { greeting, verseOfDay } from "@/lib/verses";
 import { roleAllows } from "@/lib/roles";
 import { DueItem } from "./DueItem";
+import { lenderAccounts } from "@/lib/lenders";
 import { Money } from "./Money";
 
 const MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
@@ -59,7 +60,7 @@ export async function Overview({
   const backFrom = addMonths(from, -3);
   const backTo = addDays(from, -1);
   const nextMonthNum = (Number(sel.slice(5, 7)) % 12) + 1;
-  const [balances, opening, pending, scheduled, month, sold, launched, realizedBack, selRealized, tips, nextTips] = await Promise.all([
+  const [balances, opening, pending, scheduled, month, sold, launched, realizedBack, selRealized, tips, nextTips, lenders] = await Promise.all([
     accountBalances(ids),
     accountBalances(ids, addDays(from, -1)),
     pendingItems(ids, monthEnd(`${lastOutlook}-01`)),
@@ -72,6 +73,7 @@ export async function Overview({
     sel < current ? realizedTotals(ids, selFrom, selTo) : Promise.resolve(null),
     tipsFor(ids, Number(sel.slice(5, 7))),
     tipsFor(ids, nextMonthNum),
+    lenderAccounts(),
   ]);
   // No consolidado, transferências entre as empresas se anulam e não são receita nem despesa.
   const relevant = consolidated ? pending.filter((p) => !p.transferId) : pending;
@@ -79,6 +81,12 @@ export async function Overview({
   const forecast = [...relevant, ...(consolidated ? scheduled.filter((p) => !p.transferId) : scheduled)];
   const balance = sumBy(balances, (b) => b.balance);
   const openingBalance = sumBy(opening, (b) => b.balance);
+  // Por conta: saldo hoje + o que está programado para entrar e sair dela até o fim do mês (vencidas contam).
+  const accountForecast = (id: number) =>
+    sumBy(
+      [...pending, ...scheduled].filter((p) => p.accountId === id && p.dueDate <= to),
+      (p) => (p.type === "entrada" ? p.amount : -p.amount),
+    );
   // Contas que a pessoa pode acertar com o saldo real (atalho no topo, perto do "Saldo hoje").
   const adjustable = balances
     .filter((b) => roleAllows(companies.find((c) => c.id === b.companyId)?.role, "gerir"))
@@ -643,6 +651,7 @@ export async function Overview({
                     companyColor={c.color}
                     canPay={roleAllows(c.role, "lancar") && p.source === "manual"}
                     accounts={balances.filter((a) => a.companyId === p.companyId && (a.active || a.id === p.accountId))}
+                    lenders={lenders}
                   />
                 );
               })}
@@ -711,6 +720,9 @@ export async function Overview({
         </div>
         <div className="card">
           <h2>Saldo por conta</h2>
+          <p className="small muted" style={{ marginTop: 0 }}>
+            Hoje e previsto no fim do mês, com o que está programado para cada conta. Use para escolher de onde pagar.
+          </p>
           <table>
             <tbody>
               {balances
@@ -733,6 +745,10 @@ export async function Overview({
                     </td>
                     <td className="num">
                       <Money value={b.balance} colored />
+                    </td>
+                    <td className="num small" title={`Previsto em ${ddmm(to)}: saldo de hoje mais o que está programado nesta conta`}>
+                      <span className="muted">em {ddmm(to)} </span>
+                      <Money value={b.balance + accountForecast(b.id)} colored />
                     </td>
                     {roleAllows(byId.get(b.companyId)?.role, "gerir") && (
                       <td className="num" style={{ width: 1, whiteSpace: "nowrap" }}>

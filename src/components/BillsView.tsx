@@ -18,6 +18,7 @@ import {
 } from "@/lib/bills";
 import { addDays, formatDate, formatMoney, today } from "@/lib/format";
 import { billsInRange, getAccounts, partiesOf, pendingItems } from "@/lib/queries";
+import { lenderAccounts } from "@/lib/lenders";
 import { roleAllows } from "@/lib/roles";
 import { DeleteButton } from "./DeleteButton";
 import { SettleButton } from "./SettleButton";
@@ -52,13 +53,14 @@ export async function BillsView({
   const ids = companies.map((c) => c.id);
   const byId = new Map(companies.map((c) => [c.id, c]));
   const { from, to } = billRange(f, d0);
-  const [all, accs, pending, partyList, partyRows] = await Promise.all([
+  const [all, accs, pending, partyList, partyRows, lenders] = await Promise.all([
     billsInRange(ids, type, f.base, from, to, consolidated, f.party || undefined),
     getAccounts(ids),
     f.month === "todas" ? Promise.resolve([]) : pendingItems(ids, addDays(from, -1)),
     partiesOf(ids, type),
     // Ficha do fornecedor/cliente: tudo dele, de todos os meses.
     f.party ? billsInRange(ids, type, "vencimento", "1900-01-01", "2999-12-31", consolidated, f.party) : Promise.resolve(null),
+    type === "saida" ? lenderAccounts() : Promise.resolve([]),
   ]);
   const profile = partyRows ? partyProfile(partyRows, d0) : null;
   // Vencidas que ficaram para trás em meses anteriores: aviso no topo para não se perderem.
@@ -138,6 +140,11 @@ export async function BillsView({
               <Link className="btn sm" href={qs({ mes: "todas" })}>
                 Todo o período
               </Link>
+              {!(f.status === "pagas" && f.base === "pagamento") && (
+                <Link className="btn sm" href={qs({ situacao: "pagas", ver: "pagamento" })} title={`O que foi ${entrada ? "recebido" : "pago"} no mês, pela data ${entrada ? "do recebimento" : "do pagamento"}, com exportação`}>
+                  Relatório de {entrada ? "recebidos" : "pagos"}
+                </Link>
+              )}
             </>
           ) : (
             <>
@@ -425,7 +432,7 @@ export async function BillsView({
                           <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
                             <span className={`badge ${badge[1]}`}>{badge[0]}</span>
                             {canLaunch && !r.paidAt && !r.transferId && (
-                              <SettleButton item={r} accounts={accs.filter((a) => a.companyId === r.companyId && ((a.active && !a.viaCompany) || a.id === r.accountId))} today={d0} />
+                              <SettleButton item={r} accounts={accs.filter((a) => a.companyId === r.companyId && ((a.active && !a.viaCompany) || a.id === r.accountId))} lenders={lenders} today={d0} />
                             )}
                             {canLaunch && !r.paidAt && r.transferId && (
                               <form action={setPaid}>

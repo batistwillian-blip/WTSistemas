@@ -3,8 +3,8 @@
 import { and, eq, gte, inArray, isNull, like, lte, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { linkPeople } from "./people";
-import { accounts, auditLog, companies, integrationRuns, integrationSettings, sales, transactions } from "@/db/schema";
-import { chGet, mapSale, mapTitle, readChConfig, titleState, toChDate, type ChConfig, type ChSale, type ChTitle } from "./chserver";
+import { accounts, auditLog, companies, integrationRuns, integrationSettings, paymentMethodAccounts, sales, transactions } from "@/db/schema";
+import { chGet, defaultDays, mapSale, mapTitle, readChConfig, saleNet, salePayments, titleState, toChDate, type ChConfig, type ChSale, type ChTitle } from "./chserver";
 import { addDays, addMonths, formatMoney, monthEnd, monthStart, today } from "./format";
 import { decryptSecret } from "./secret-box";
 
@@ -13,6 +13,8 @@ export type ChSettings = {
   cfg: ChConfig;
   companyId: number;
   accountId: number;
+  /** Conta de onde saem os títulos pagos no CH (se vazia, a mesma dos títulos). */
+  paidAccountId: number | null;
   origin: "tela" | "variaveis";
   // Títulos importados: contas a pagar e, se marcado, contas a receber.
   kinds: ("Receber" | "Pagar")[];
@@ -43,6 +45,7 @@ export async function loadChSettings(): Promise<ChSettings | null> {
       cfg: { baseUrl: row.baseUrl, cnpj: row.cnpj, companyKey: row.companyKey, token: decryptSecret(row.tokenEncrypted) },
       companyId: row.companyId,
       accountId: row.accountId,
+      paidAccountId: row.paidAccountId,
       origin: "tela",
       kinds: [...(row.importPayables ? (["Pagar"] as const) : []), ...(row.importReceivables ? (["Receber"] as const) : [])],
       sales: row.importSales,
@@ -55,13 +58,13 @@ export async function loadChSettings(): Promise<ChSettings | null> {
   const slug = process.env.CHSERVER_EMPRESA_SLUG || "primetech-loja";
   const [company] = await db.select().from(companies).where(eq(companies.slug, slug));
   if (!company) throw new Error(`Empresa ${slug} não encontrada.`);
-  const accountName = process.env.CHSERVER_CONTA_NOME || "Banco";
+  const accountName = process.env.CHSERVER_CONTA_NOME || "Cresol";
   const [account] = await db
     .select()
     .from(accounts)
     .where(and(eq(accounts.companyId, company.id), eq(accounts.name, accountName)));
   if (!account) throw new Error(`Conta "${accountName}" não encontrada em ${company.name}.`);
-  return { cfg, companyId: company.id, accountId: account.id, origin: "variaveis", kinds: ["Pagar"], sales: true, balance: { paid: false, sales: false, from: null }, salesHistory: false };
+  return { cfg, companyId: company.id, accountId: account.id, paidAccountId: null, origin: "variaveis", kinds: ["Pagar"], sales: true, balance: { paid: false, sales: false, from: null }, salesHistory: false };
 }
 
 /** Testa a conexão lendo o cadastro da empresa no CHServer (somente leitura). */
@@ -128,9 +131,11 @@ async function runSync(triggeredBy: { id: number; name: string } | null): Promis
     let created = 0;
     let updated = 0;
     for (const t of titles) {
+      // Pago no CH sai da conta escolhida para os pagos; em aberto fica na conta dos títulos.
+      const titleAccount = t.paidAt && settings.paidAccountId ? settings.paidAccountId : accountId;
       const [row] = await db
         .insert(transactions)
-        .values({ ...t, companyId, accountId, source: "chserver" })
+        .values({ ...t, companyId, accountId: titleAccount, source: "chserver" })
         .onConflictDoUpdate({
           target: [transactions.source, transactions.externalId],
           set: {
@@ -142,12 +147,13 @@ async function runSync(triggeredBy: { id: number; name: string } | null): Promis
             paidAt: t.paidAt,
             externalCategory: t.externalCategory,
             offBalance: t.offBalance,
+            accountId: titleAccount,
             deletedAt: null,
             updatedAt: new Date(),
           },
           // Só regrava se algo mudou (inclusive título que tinha sumido e voltou), para o contador refletir alterações reais.
-          setWhere: sql`(${transactions.amount}, ${transactions.dueDate}, ${transactions.paidAt}, ${transactions.description}, ${transactions.offBalance}, ${transactions.deletedAt} is null)
-            is distinct from (excluded.valor, excluded.vencimento, excluded.pago_em, excluded.descricao, excluded.fora_do_saldo, true)`,
+          setWhere: sql`(${transactions.amount}, ${transactions.dueDate}, ${transactions.paidAt}, ${transactions.description}, ${transactions.offBalance}, ${transactions.accountId}, ${transactions.deletedAt} is null)
+            is distinct from (excluded.valor, excluded.vencimento, excluded.pago_em, excluded.descricao, excluded.fora_do_saldo, excluded.conta_id, true)`,
         })
         .returning({ inserted: sql<boolean>`(xmax = 0)` });
       if (!row) continue;
@@ -294,44 +300,62 @@ async function syncSales(
     await db.update(sales).set({ deletedAt: now }).where(inArray(sales.id, gone.map((g) => g.id)));
   }
 
-  // Uma entrada por dia no caixa, recalculada a partir das vendas guardadas.
-  const daily = await db
-    .select({
-      date: sales.date,
-      n: sql<number>`count(*) filter (where not ${sales.canceled})::int`,
-      net: sql<string>`coalesce(sum(greatest(${sales.total} - ${sales.returned}, 0)) filter (where not ${sales.canceled}), 0)`,
-    })
+  // Uma entrada por dia e por forma de pagamento, na conta configurada para a forma e no dia em que o dinheiro cai
+  // (data da venda + prazo, nunca a data da importação: importar dias depois dá o mesmo resultado).
+  const daySales = await db
+    .select({ date: sales.date, total: sales.total, returned: sales.returned, canceled: sales.canceled, payment: sales.payment })
     .from(sales)
-    .where(and(eq(sales.companyId, companyId), isNull(sales.deletedAt), gte(sales.date, fromIso), lte(sales.date, toIso)))
-    .groupBy(sales.date);
-  // Só os dias que contam no saldo viram lançamento; os outros ficam só na tela de vendas.
-  const byDay = new Map(daily.filter((d) => countsInBalance(balance, "sales", d.date)).map((d) => [d.date, { n: d.n, net: Number(d.net) }]));
+    .where(and(eq(sales.companyId, companyId), isNull(sales.deletedAt), gte(sales.date, fromIso), lte(sales.date, toIso)));
+  const methods = new Map((await db.select().from(paymentMethodAccounts).where(eq(paymentMethodAccounts.companyId, companyId))).map((m) => [m.method, m]));
+  const groups = new Map<string, { date: string; method: string; n: number; net: number }>();
+  for (const s of daySales) {
+    // Só os dias que contam no saldo viram lançamento; os outros ficam só na tela de vendas.
+    if (!countsInBalance(balance, "sales", s.date)) continue;
+    for (const p of salePayments(s.payment, saleNet(s))) {
+      const key = `vendas:${s.date}:${p.method}`;
+      const g = groups.get(key) ?? { date: s.date, method: p.method, n: 0, net: 0 };
+      g.n += 1;
+      g.net += p.amount;
+      groups.set(key, g);
+    }
+  }
+  const d0 = today();
   const current = await db
-    .select({ id: transactions.id, externalId: transactions.externalId, dueDate: transactions.dueDate })
+    .select({ id: transactions.id, externalId: transactions.externalId })
     .from(transactions)
-    .where(and(eq(transactions.source, "chserver"), like(transactions.externalId, "vendas:%"), isNull(transactions.deletedAt)));
-  for (const [date, d] of byDay) {
-    if (d.net <= 0) continue;
+    .where(and(eq(transactions.source, "chserver"), like(transactions.externalId, "vendas:%"), isNull(transactions.deletedAt), eq(transactions.companyId, companyId)));
+  for (const [externalId, g] of groups) {
+    if (g.net <= 0) continue;
+    const map = methods.get(g.method);
+    const days = map?.days ?? defaultDays(g.method);
+    const credit = addDays(g.date, days);
     const values = {
       type: "entrada" as const,
-      description: `Vendas do dia ${date.slice(8, 10)}/${date.slice(5, 7)} (${d.n} ${d.n === 1 ? "nota" : "notas"})`,
-      amount: d.net,
-      dueDate: date,
-      paidAt: date,
+      description: `Vendas ${g.date.slice(8, 10)}/${g.date.slice(5, 7)} · ${g.method}${days ? ` (D+${days})` : ""} (${g.n} ${g.n === 1 ? "nota" : "notas"})`,
+      amount: g.net,
+      dueDate: credit,
+      // Cartão que ainda não caiu fica a receber (aparece na programação) até o dia do crédito.
+      paidAt: credit <= d0 ? credit : null,
+      accountId: map?.accountId ?? accountId,
       externalCategory: "Vendas (CHServer)",
       offBalance: false,
     };
     await db
       .insert(transactions)
-      .values({ ...values, companyId, accountId, source: "chserver", externalId: `vendas:${date}` })
+      .values({ ...values, companyId, source: "chserver", externalId })
       .onConflictDoUpdate({ target: [transactions.source, transactions.externalId], set: { ...values, deletedAt: null, updatedAt: now } });
   }
   // Lançamentos de dias fora do saldo não são mexidos aqui: só saem pelo botão "Zerar o saldo importado".
-  const stale = current.filter(
-    (c) => c.dueDate >= fromIso && c.dueDate <= toIso && countsInBalance(balance, "sales", c.dueDate) && !((byDay.get(c.dueDate)?.net ?? 0) > 0),
-  );
+  // A data da venda vem do código ("vendas:AAAA-MM-DD..."), não do vencimento (que pode ser o dia do crédito).
+  const saleDate = (id: string) => id.slice(7, 17);
+  const stale = current.filter((c) => {
+    const d = saleDate(c.externalId!);
+    return d >= fromIso && d <= toIso && countsInBalance(balance, "sales", d) && !((groups.get(c.externalId!)?.net ?? 0) > 0);
+  });
   if (stale.length) await db.update(transactions).set({ deletedAt: now }).where(inArray(transactions.id, stale.map((t) => t.id)));
 
+  const byDay = new Map<string, { net: number }>();
+  for (const g of groups.values()) byDay.set(g.date, { net: (byDay.get(g.date)?.net ?? 0) + g.net });
   const total = [...byDay.values()].reduce((s, d) => s + d.net, 0);
   return {
     count: list.length,

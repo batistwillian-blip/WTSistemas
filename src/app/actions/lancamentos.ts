@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { accounts, categories, companies, transactions } from "@/db/schema";
+import { accounts, categories, companies, transactions, transfers } from "@/db/schema";
 import { requireCompanyId } from "@/lib/access";
 import { logChange } from "@/lib/audit";
 import { competenceOf, isMonthlySeries, moveSeriesDate, parsePlan, planSeries, settle, shiftCompetence, OPEN_ENDED_MONTHS, SYSTEM_DOC, type SeriesMode } from "@/lib/billing";
@@ -331,9 +331,22 @@ export async function settleTransaction(_prev: ActionState, fd: FormData): Promi
 
     const paidAt = isoDate(fd, "paidAt") ?? today();
     const accountId = int(fd, "accountId");
-    const [account] = accountId
-      ? await db.select().from(accounts).where(and(eq(accounts.id, accountId), eq(accounts.companyId, current.companyId)))
-      : [];
+    const [picked] = accountId ? await db.select().from(accounts).where(eq(accounts.id, accountId)) : [];
+    // Conta de outra empresa: o dinheiro sai de lá como empréstimo para esta empresa, que paga a conta.
+    let lender: { account: typeof accounts.$inferSelect; companyName: string; ownName: string } | null = null;
+    let account = picked && picked.companyId === current.companyId ? picked : undefined;
+    if (picked && picked.companyId !== current.companyId) {
+      if (current.type !== "saida") throw new UserError("Só dá para pagar com dinheiro de outra empresa; para receber, escolha uma conta desta empresa.");
+      if (picked.viaCompany || !picked.active) throw new UserError("Conta inválida.");
+      const { company: from } = await requireCompanyId(picked.companyId, "lancar");
+      const { company: own } = await requireCompanyId(current.companyId, "lancar");
+      if (from.ownerId || own.ownerId) throw new UserError("Para a área Pessoal, use o campo de qual empresa saiu o dinheiro.");
+      // A conta desta empresa por onde o dinheiro passa: a da própria conta a pagar, se estiver ativa.
+      const ownAccounts = await db.select().from(accounts).where(and(eq(accounts.companyId, current.companyId), eq(accounts.active, true), eq(accounts.viaCompany, false)));
+      account = ownAccounts.find((a) => a.id === current.accountId) ?? ownAccounts[0];
+      if (!account) throw new UserError("Esta empresa não tem conta ativa para registrar o empréstimo.");
+      lender = { account: picked, companyName: from.name, ownName: own.name };
+    }
     if (!account) throw new UserError("Escolha de qual conta saiu o dinheiro.");
     if (account.viaCompany && !current.withdrawalAccountId) throw new UserError("Escolha de qual conta saiu o dinheiro.");
     if (current.withdrawalAccountId && fd.get("partial") === "on") {
@@ -349,6 +362,23 @@ export async function settleTransaction(_prev: ActionState, fd: FormData): Promi
       if (!before || before.paidAt || before.deletedAt) throw new UserError("Esta conta mudou enquanto você preenchia. Recarregue a página.");
       const r = settle({ open: before.amount, paid, interest, discount, partial: fd.get("partial") === "on" });
       if ("error" in r) throw new UserError(r.error);
+      if (lender) {
+        // Empréstimo entre empresas: sai da conta da outra empresa e entra nesta, na mesma data e valor do pagamento.
+        const description = `Empréstimo para pagar: ${before.description}`.slice(0, 200);
+        const [t] = await tx
+          .insert(transfers)
+          .values({ nature: "emprestimo", fromCompanyId: lender.account.companyId, toCompanyId: before.companyId, amount: r.paid, date: paidAt, description, createdBy: user.id })
+          .returning();
+        const leg = { amount: r.paid, dueDate: paidAt, paidAt, transferId: t.id, createdBy: user.id };
+        await tx.insert(transactions).values([
+          { ...leg, companyId: lender.account.companyId, accountId: lender.account.id, type: "saida", description: `${description} → ${lender.ownName}` },
+          { ...leg, companyId: before.companyId, accountId: account.id, type: "entrada", description: `${description} ← ${lender.companyName}` },
+        ]);
+        await logChange(
+          { user, companyId: lender.account.companyId, action: "criar", entity: "transferencia", entityId: t.id, after: { ...t, contaOrigem: lender.account.name, contaDestino: account.name, paraPagar: before.id } },
+          tx,
+        );
+      }
       if (r.kind === "total") {
         const [after] = await tx
           .update(transactions)
@@ -365,7 +395,7 @@ export async function settleTransaction(_prev: ActionState, fd: FormData): Promi
           .where(eq(transactions.id, id))
           .returning();
         await logChange({ user, companyId: before.companyId, action: "baixar", entity: "lancamento", entityId: id, before, after }, tx);
-        return `${word} registrado.`;
+        return `${word} registrado${lender ? ` com dinheiro da ${lender.companyName} (o empréstimo ficou em Entre empresas)` : ""}.`;
       }
       const [part] = await tx
         .insert(transactions)

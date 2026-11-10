@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq, isNull, like } from "drizzle-orm";
 import { db } from "@/db";
-import { accounts, integrationSettings, transactions } from "@/db/schema";
+import { accounts, integrationSettings, paymentMethodAccounts, transactions } from "@/db/schema";
 import { requireAdmin } from "@/lib/access";
 import { logChange } from "@/lib/audit";
 import { buildBaseUrl, validateChConfig } from "@/lib/chserver";
@@ -51,6 +51,10 @@ export async function saveChSettings(_prev: ActionState, fd: FormData): Promise<
     const from = str(fd, "balanceFrom", 10);
     if (from && !isValidIsoDate(from)) throw new UserError("Data do saldo inválida.");
     const balanceFrom = from || null;
+    const paidId = int(fd, "paidAccountId");
+    const [paidAccount] = paidId ? await db.select().from(accounts).where(eq(accounts.id, paidId)) : [];
+    if (paidId && (!paidAccount || paidAccount.companyId !== account.companyId))
+      throw new UserError("A conta das contas pagas tem de ser da mesma empresa da integração.");
     const values = {
       baseUrl: cfg.baseUrl,
       cnpj: cfg.cnpj,
@@ -65,6 +69,7 @@ export async function saveChSettings(_prev: ActionState, fd: FormData): Promise<
       paidAffectBalance,
       salesAffectBalance,
       balanceFrom,
+      paidAccountId: paidAccount?.id ?? null,
       updatedAt: new Date(),
       updatedBy: admin.id,
     };
@@ -75,7 +80,7 @@ export async function saveChSettings(_prev: ActionState, fd: FormData): Promise<
     // O token nunca vai para o log: registramos apenas se ele foi trocado.
     const visible = (v: typeof values | typeof current) =>
       v && { endereco: v.baseUrl, cnpj: v.cnpj, chave: v.companyKey, empresa: v.companyId, conta: v.accountId, ativa: v.enabled,
-        pagar: v.importPayables, receber: v.importReceivables, vendas: v.importSales, pagasNoSaldo: v.paidAffectBalance, vendasNoSaldo: v.salesAffectBalance, saldoDesde: v.balanceFrom };
+        pagar: v.importPayables, receber: v.importReceivables, vendas: v.importSales, pagasNoSaldo: v.paidAffectBalance, vendasNoSaldo: v.salesAffectBalance, saldoDesde: v.balanceFrom, contaPagos: v.paidAccountId };
     await logChange({
       user: admin,
       companyId: account.companyId,
@@ -158,5 +163,36 @@ export async function clearImportedBalance(_prev: ActionState): Promise<ActionSt
     });
     revalidatePath("/", "layout");
     redirect(`/admin/integracoes?zerados=${rows.length}`);
+  });
+}
+
+/** Em que conta cai cada forma de pagamento das vendas e em quantos dias. Vale a partir da próxima importação (refaz os últimos 40 dias). */
+export async function savePaymentMethods(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  return guard(async () => {
+    const admin = await requireAdmin();
+    const [settings] = await db.select().from(integrationSettings).where(eq(integrationSettings.source, "chserver"));
+    if (!settings) throw new UserError("Configure a conexão primeiro.");
+    const own = await db.select({ id: accounts.id }).from(accounts).where(eq(accounts.companyId, settings.companyId));
+    const ownIds = new Set(own.map((a) => a.id));
+    const rows: { companyId: number; method: string; accountId: number; days: number }[] = [];
+    for (let i = 0; fd.has(`m_${i}`); i++) {
+      const method = str(fd, `m_${i}`, 80);
+      const accountId = int(fd, `a_${i}`);
+      const days = int(fd, `d_${i}`) ?? 0;
+      if (!method || !accountId) continue;
+      if (!ownIds.has(accountId)) throw new UserError("Conta inválida para a forma " + method + ".");
+      if (days < 0 || days > 60) throw new UserError("O prazo vai de 0 a 60 dias.");
+      rows.push({ companyId: settings.companyId, method, accountId, days });
+    }
+    await db.transaction(async (tx) => {
+      await tx.delete(paymentMethodAccounts).where(eq(paymentMethodAccounts.companyId, settings.companyId));
+      if (rows.length) await tx.insert(paymentMethodAccounts).values(rows);
+      await logChange(
+        { user: admin, companyId: settings.companyId, action: "configurar", entity: "formas_pagamento", after: rows.map((r) => `${r.method} → ${r.accountId} (D+${r.days})`) },
+        tx,
+      );
+    });
+    revalidatePath("/admin/integracoes");
+    return { ok: "Formas de pagamento salvas. A próxima importação refaz as vendas dos últimos 40 dias com essas contas." };
   });
 }

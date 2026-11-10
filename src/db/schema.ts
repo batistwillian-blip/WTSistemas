@@ -257,9 +257,28 @@ export const integrationSettings = pgTable("config_integracao", {
   balanceFrom: date("saldo_desde"),
   // Quando o histórico de vendas de 12 meses já foi trazido (uma vez); depois só os últimos dias são relidos.
   salesBackfilledAt: timestamp("vendas_historico_em", { withTimezone: true }),
+  // Conta de onde saem as contas pagas no CH (quando entram no saldo). Vazio = a mesma conta dos títulos.
+  paidAccountId: integer("conta_pagos_id").references(() => accounts.id),
   updatedAt: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
   updatedBy: integer("atualizado_por").references(() => users.id),
 });
+
+/** Em que conta cai cada forma de pagamento das vendas do CH e em quantos dias (cartão D+1, Pix e dinheiro na hora). */
+export const paymentMethodAccounts = pgTable(
+  "formas_pagamento_contas",
+  {
+    companyId: integer("empresa_id")
+      .notNull()
+      .references(() => companies.id),
+    method: text("forma").notNull(),
+    accountId: integer("conta_id")
+      .notNull()
+      .references(() => accounts.id),
+    days: integer("dias").notNull().default(0),
+    updatedAt: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.companyId, t.method] })],
+);
 
 /** Vendas (notas de saída) importadas do CHServer, só para consulta. O total do dia vira uma entrada no caixa. */
 export const sales = pgTable(

@@ -52,10 +52,24 @@ const EMPRESAS = [
   },
 ];
 
-const CONTAS = [
-  { nome: "Caixa físico", tipo: "caixa" },
-  { nome: "Banco", tipo: "banco" },
-];
+// Contas reais de cada empresa (informadas pelo Willian em 10/11/2026). Só são criadas se a empresa ainda não tiver nenhuma conta.
+const CONTAS = {
+  "primetech-loja": [
+    { nome: "Cresol", tipo: "banco" },
+    { nome: "PagBank", tipo: "banco" },
+    { nome: "Infinity TH", tipo: "banco" },
+    { nome: "Ton RO", tipo: "banco" },
+    { nome: "Dinheiro", tipo: "caixa" },
+  ],
+  "aura-educa": [
+    { nome: "Cresol", tipo: "banco" },
+    { nome: "Dinheiro", tipo: "caixa" },
+  ],
+  "primetech-sistemas": [
+    { nome: "Cora", tipo: "banco" },
+    { nome: "Dinheiro", tipo: "caixa" },
+  ],
+};
 
 async function seed(client) {
   for (const e of EMPRESAS) {
@@ -65,11 +79,12 @@ async function seed(client) {
     );
     const { rows } = await client.query("select id from empresas where slug = $1", [e.slug]);
     const id = rows[0].id;
-    for (const c of CONTAS) {
-      await client.query(
-        "insert into contas (empresa_id, nome, tipo) select $1, $2, $3 where not exists (select 1 from contas where empresa_id = $1 and nome = $2)",
-        [id, c.nome, c.tipo],
-      );
+    // Depois de criadas, as contas são da empresa (renomear ou desativar não faz voltar as antigas).
+    const { rows: hasAccounts } = await client.query("select 1 from contas where empresa_id = $1 limit 1", [id]);
+    if (hasAccounts.length === 0) {
+      for (const c of CONTAS[e.slug] ?? [{ nome: "Dinheiro", tipo: "caixa" }]) {
+        await client.query("insert into contas (empresa_id, nome, tipo) values ($1, $2, $3)", [id, c.nome, c.tipo]);
+      }
     }
     // Dicas de sazonalidade: só na primeira vez (depois a empresa edita as suas).
     const tips = DICAS[e.slug] ?? [];

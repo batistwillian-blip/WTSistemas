@@ -8,6 +8,7 @@ import { Feedback } from "./FormStatus";
 
 export type SettleItem = {
   id: number;
+  companyId?: number;
   type: "entrada" | "saida";
   amount: number;
   description: string;
@@ -27,9 +28,12 @@ export function SettleButton({
   today,
   label,
   className = "btn sm",
+  lenders = [],
 }: {
   item: SettleItem;
   accounts: { id: number; name: string }[];
+  /** Contas de outras empresas: pagar com elas registra um empréstimo para esta empresa. */
+  lenders?: { id: number; name: string; companyId: number; company: string }[];
   today: string;
   label?: string;
   className?: string;
@@ -39,9 +43,13 @@ export function SettleButton({
   const [interest, setInterest] = useState("");
   const [discount, setDiscount] = useState("");
   const [future, setFuture] = useState(false);
+  const [chosen, setChosen] = useState(String(item.accountId));
   const [paid, setPaid] = useState(toInput(item.amount));
   const [touched, setTouched] = useState(false);
   const entrada = item.type === "entrada";
+  // Pagar com dinheiro de outra empresa: só para saídas.
+  const others = entrada || !item.companyId ? [] : lenders.filter((l) => l.companyId !== item.companyId);
+  const lender = others.find((o) => String(o.id) === chosen);
 
   // Juros e desconto recalculam o valor pago até a pessoa digitar o valor à mão.
   useEffect(() => {
@@ -94,13 +102,41 @@ export function SettleButton({
             </label>
             <label>
               {entrada ? "Entrou na conta" : "Saiu da conta"}
-              <select name="accountId" defaultValue={item.accountId} required>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
+              <select name="accountId" value={chosen} onChange={(e) => setChosen(e.target.value)} required>
+                {others.length > 0 ? (
+                  <>
+                    <optgroup label="Desta empresa">
+                      {accounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                    {[...new Set(others.map((o) => o.company))].map((c) => (
+                      <optgroup key={c} label={`Dinheiro de ${c} (vira empréstimo)`}>
+                        {others
+                          .filter((o) => o.company === c)
+                          .map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.name} · {c}
+                            </option>
+                          ))}
+                      </optgroup>
+                    ))}
+                  </>
+                ) : (
+                  accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))
+                )}
               </select>
+              {lender && (
+                <span className="small amber-text">
+                  Sai da conta {lender.name} da {lender.company}. Fica registrado um empréstimo da {lender.company} para esta empresa, em Entre empresas.
+                </span>
+              )}
             </label>
             <label>
               Juros / multa (R$)

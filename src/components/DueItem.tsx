@@ -25,6 +25,7 @@ export function dueStatus(dueDate: string, d0 = today()): [string, string] {
 
 type Item = {
   id: number;
+  companyId?: number;
   type: "entrada" | "saida";
   amount: number;
   dueDate: string;
@@ -46,6 +47,7 @@ export function DueItem({
   companyColor,
   canPay,
   accounts,
+  lenders,
 }: {
   item: Item;
   companyName?: string;
@@ -53,6 +55,7 @@ export function DueItem({
   canPay: boolean;
   /** Contas da empresa do item, para escolher de onde saiu/entrou o dinheiro na baixa. */
   accounts: { id: number; name: string }[];
+  lenders?: { id: number; name: string; companyId: number; company: string }[];
 }) {
   const [label, tone] = dueStatus(item.dueDate);
   return (
@@ -99,7 +102,7 @@ export function DueItem({
                 </button>
               </form>
             ) : (
-              <SettleButton item={item} accounts={accounts} today={today()} />
+              <SettleButton item={item} accounts={accounts} lenders={lenders} today={today()} />
             ))}
         </span>
       </div>

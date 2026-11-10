@@ -13,7 +13,7 @@ function authorized(req: Request): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-// Chamada pelo agendador da hospedagem a cada 15 minutos.
+// Chamada todo dia às 08:00 pelo GitHub Actions (.github/workflows/sincronizar-ch.yml), que também acorda o servidor.
 export async function POST(req: Request) {
   if (!authorized(req)) return new Response("Não autorizado", { status: 401 });
   const result = await syncChServer();
