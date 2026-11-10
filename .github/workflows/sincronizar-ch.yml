@@ -1,0 +1,30 @@
+# Sincronização diária com o CHServer às 08:00 (horário de Brasília = 11:00 UTC).
+# O plano grátis do Render "dorme" sem acesso; esta chamada acorda o servidor e roda a importação.
+# Precisa do segredo CRON_SECRET no GitHub (Settings → Secrets and variables → Actions), igual ao do Render.
+name: Sincronizar CHServer
+on:
+  schedule:
+    - cron: "0 11 * * *"
+  workflow_dispatch: {}
+permissions: {}
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Chamar a importação
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ vars.APP_URL || 'https://caixa-consolidado.onrender.com' }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then echo "Falta o segredo CRON_SECRET."; exit 1; fi
+          # O servidor pode levar até ~1 minuto para acordar: tenta algumas vezes.
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o resposta.json -w "%{http_code}" --max-time 240 -X POST \
+              -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/chserver" || echo 000)
+            echo "Tentativa $i: HTTP $code"
+            if [ "$code" = "200" ]; then cat resposta.json; exit 0; fi
+            if [ "$code" = "401" ]; then echo "Segredo recusado: confira o CRON_SECRET no GitHub e no Render."; exit 1; fi
+            sleep 30
+          done
+          cat resposta.json 2>/dev/null; exit 1

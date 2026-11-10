@@ -1,0 +1,2 @@
+ALTER TABLE "config_integracao" ADD COLUMN "importar_receber" boolean DEFAULT true NOT NULL;--> statement-breakpoint
+ALTER TABLE "config_integracao" ADD COLUMN "importar_pagar" boolean DEFAULT true NOT NULL;
