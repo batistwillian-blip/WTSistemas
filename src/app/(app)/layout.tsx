@@ -122,7 +122,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       title: "Administração",
       href: "/admin/usuarios",
       links: [
-        { href: "/admin/usuarios", label: "Usuários e acessos" },
+        { href: "/admin/usuarios", label: "Usuários e permissões" },
         { href: "/admin/integracoes", label: "Integrador BI (CHServer)" },
         { href: "/admin/log", label: "Log de alterações" },
       ],
@@ -149,9 +149,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <span className="avatar">{user.name.slice(0, 1).toUpperCase()}</span>
             <div>
               <b>{user.name}</b>
-              <small>{user.isAdmin ? "Administrador" : "Usuário"}</small>
+              <small>{user.isAdmin ? "Master" : "Usuário"}</small>
             </div>
           </div>
+          <Link href="/inicio">← Início (WT Sistemas)</Link>
           <Link href="/conta">Trocar minha senha</Link>
           <form action={logout}>
             <button type="submit">Sair</button>

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { companies, companyAccess, users, type Role } from "@/db/schema";
+import { companies, companyAccess, users, type AuraAccess, type Role } from "@/db/schema";
 import { requireAdmin } from "@/lib/access";
 import { endAllSessions } from "@/lib/auth";
 import { logChange } from "@/lib/audit";
@@ -11,6 +11,13 @@ import { guard, int, str, UserError, type ActionState } from "@/lib/form";
 import { hashPassword, passwordProblem } from "@/lib/password";
 
 const ROLES: Role[] = ["leitura", "lancador", "gestor"];
+const AURA: AuraAccess[] = ["ver", "mover"];
+
+/** Acesso à Central de vendas da Aura (vazio = sem acesso). */
+function readAura(fd: FormData): AuraAccess | null {
+  const v = str(fd, "aura") as AuraAccess;
+  return AURA.includes(v) ? v : null;
+}
 
 async function readAccess(fd: FormData) {
   // Área pessoal nunca recebe acesso de outro usuário.
@@ -40,7 +47,7 @@ export async function createUser(_prev: ActionState, fd: FormData): Promise<Acti
     await db.transaction(async (tx) => {
       const [u] = await tx
         .insert(users)
-        .values({ name, email, passwordHash: await hashPassword(password), isAdmin, mustChangePassword: true })
+        .values({ name, email, passwordHash: await hashPassword(password), isAdmin, auraAccess: readAura(fd), mustChangePassword: true })
         .returning();
       if (access.length) await tx.insert(companyAccess).values(access.map((a) => ({ ...a, userId: u.id })));
       await logChange({ user: admin, action: "criar", entity: "usuario", entityId: u.id, after: { ...u, acessos: access } }, tx);
@@ -60,7 +67,7 @@ export async function updateUser(_prev: ActionState, fd: FormData): Promise<Acti
     const name = str(fd, "name", 100) || before.name;
     const active = fd.get("active") === "on";
     const isAdmin = fd.get("isAdmin") === "on";
-    if (id === admin.id && (!active || !isAdmin)) throw new UserError("Você não pode remover o próprio acesso de administrador.");
+    if (id === admin.id && (!active || !isAdmin)) throw new UserError("Você não pode remover o próprio acesso de master.");
     const access = await readAccess(fd);
     const beforeAccess = await db.select().from(companyAccess).where(eq(companyAccess.userId, id));
     const newPassword = (fd.get("password") as string | null) ?? "";
@@ -75,6 +82,7 @@ export async function updateUser(_prev: ActionState, fd: FormData): Promise<Acti
           name,
           active,
           isAdmin,
+          auraAccess: readAura(fd),
           ...(newPassword ? { passwordHash: await hashPassword(newPassword), mustChangePassword: true, failedAttempts: 0, lockedUntil: null } : {}),
         })
         .where(eq(users.id, id))

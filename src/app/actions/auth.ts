@@ -21,7 +21,7 @@ export async function login(_prev: ActionState, fd: FormData): Promise<ActionSta
   }
   await startSession(result.user.id);
   await logChange({ user: result.user, action: "login", entity: "usuario", entityId: result.user.id });
-  redirect(result.user.mustChangePassword ? "/conta?primeiro=1" : "/");
+  redirect(result.user.mustChangePassword ? "/conta?primeiro=1" : "/inicio");
 }
 
 export async function logout() {
@@ -48,7 +48,7 @@ export async function changePassword(_prev: ActionState, fd: FormData): Promise<
     await endAllSessions(user.id);
     await startSession(user.id);
     await logChange({ user, action: "trocar_senha", entity: "usuario", entityId: user.id });
-    redirect("/");
+    redirect("/inicio");
   });
 }
 
@@ -111,6 +111,6 @@ export async function recoverPassword(_prev: ActionState, fd: FormData): Promise
     await endAllSessions(user.id);
     await startSession(user.id);
     await logChange({ user, action: "recuperar_senha", entity: "usuario", entityId: user.id });
-    redirect("/");
+    redirect("/inicio");
   });
 }

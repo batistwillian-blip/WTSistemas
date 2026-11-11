@@ -409,3 +409,107 @@ details.box[open] summary { margin-bottom: 12px; }
 .acc-row > .btn { margin-bottom: 2px; }
 .num .btn { font-family: var(--f-ui); letter-spacing: normal; }
 .adjust-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+
+/* ---------- Portal WT Sistemas (login e escolha do sistema): visual escuro da Central da Aura ---------- */
+.wt {
+  --wt-bg: #070814;
+  --wt-glass: rgba(255, 255, 255, 0.045);
+  --wt-glass2: rgba(255, 255, 255, 0.08);
+  --wt-line: rgba(255, 255, 255, 0.1);
+  --wt-ink: #eef0ff;
+  --wt-muted: #8a90b8;
+  --wt-v: #8b5cf6;
+  --wt-c: #22d3ee;
+  --wt-p: #ec4899;
+  min-height: 100vh;
+  color: var(--wt-ink);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(139, 92, 246, 0.25), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(34, 211, 238, 0.14), transparent 60%),
+    var(--wt-bg);
+  position: relative;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  font-family: var(--f-ui);
+}
+.wt::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse at top, #000 30%, transparent 75%);
+}
+.wt > * { position: relative; }
+.wt h1, .wt h2, .wt-logo b { font-family: var(--font-wt), var(--f-ui); letter-spacing: -0.01em; }
+.wt a { color: var(--wt-c); }
+.wt-logo { display: flex; align-items: center; gap: 14px; }
+.wt-logo b { font-size: 26px; font-weight: 700; }
+.wt-logo b span { background: linear-gradient(90deg, var(--wt-c), var(--wt-v) 55%, var(--wt-p)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.wt-orb {
+  width: 44px; height: 44px; border-radius: 50%; flex: none;
+  background: radial-gradient(circle at 35% 30%, #fff, var(--wt-c) 25%, var(--wt-v) 60%, #2e1065);
+  box-shadow: 0 0 22px rgba(139, 92, 246, 0.8), 0 0 50px rgba(34, 211, 238, 0.35);
+  animation: wt-breathe 3.2s ease-in-out infinite;
+}
+@keyframes wt-breathe { 50% { transform: scale(1.06); box-shadow: 0 0 30px rgba(139, 92, 246, 0.95), 0 0 70px rgba(34, 211, 238, 0.45); } }
+@media (prefers-reduced-motion: reduce) { .wt-orb { animation: none; } }
+.wt-card {
+  width: min(400px, 100%);
+  background: linear-gradient(180deg, var(--wt-glass2), var(--wt-glass));
+  border: 1px solid var(--wt-line);
+  border-radius: 20px;
+  padding: 30px 28px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+}
+.wt-login { display: grid; gap: 26px; justify-items: center; width: 100%; }
+.wt-login .wt-card { display: grid; gap: 18px; }
+.wt-login h2 { margin: 0; font-size: 19px; }
+.wt-sub { color: var(--wt-muted); margin: -10px 0 0; font-size: 14px; }
+.wt label { color: var(--wt-muted); font-size: 13px; }
+.wt input {
+  background: rgba(255, 255, 255, 0.06); color: var(--wt-ink); border: 1px solid var(--wt-line); border-radius: 10px; padding: 11px 12px;
+}
+.wt input:focus { outline: 2px solid var(--wt-v); outline-offset: 1px; border-color: transparent; }
+.wt .pw-eye { color: var(--wt-muted); background: transparent; border: 0; }
+.wt .alert { background: rgba(248, 113, 113, 0.12); border: 1px solid rgba(248, 113, 113, 0.35); border-radius: 10px; padding: 10px 12px; }
+.wt .alert.ok { color: #6ee7b7; background: rgba(52, 211, 153, 0.12); border-color: rgba(52, 211, 153, 0.35); }
+.wt button[type="submit"], .wt .wt-btn {
+  background: linear-gradient(90deg, var(--wt-v), #6d28d9); color: #fff; border: 0; border-radius: 10px; padding: 11px 16px; font-weight: 600; cursor: pointer; width: 100%;
+  box-shadow: 0 8px 24px rgba(139, 92, 246, 0.35);
+}
+.wt button[type="submit"]:hover { filter: brightness(1.1); }
+.wt .alert.error { color: #fca5a5; }
+.wt-foot { color: var(--wt-muted); font-size: 12px; text-align: center; }
+.wt-top { position: absolute; top: 18px; right: 20px; display: flex; gap: 14px; align-items: center; font-size: 13px; color: var(--wt-muted); }
+.wt-top form { margin: 0; }
+.wt-top button { background: none; border: 1px solid var(--wt-line); color: var(--wt-ink); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+.wt-home { display: grid; gap: 28px; width: min(860px, 100%); justify-items: center; text-align: center; }
+.wt-home h1 { margin: 0; font-size: 28px; }
+.wt-mods { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; width: 100%; }
+.wt-mod {
+  display: grid; gap: 10px; text-align: left; text-decoration: none; color: var(--wt-ink) !important;
+  background: linear-gradient(180deg, var(--wt-glass2), var(--wt-glass)); border: 1px solid var(--wt-line); border-radius: 20px; padding: 24px;
+  transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.wt-mod, .wt-mod:hover { text-decoration: none; }
+.wt-mod:hover, .wt-mod:focus-visible { transform: translateY(-3px); border-color: rgba(139, 92, 246, 0.6); box-shadow: 0 20px 50px rgba(139, 92, 246, 0.25); }
+.wt-mod .ic { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; font-size: 22px; }
+.wt-mod h2 { margin: 0; font-size: 19px; }
+.wt-mod p { margin: 0; color: var(--wt-muted); font-size: 14px; }
+.wt-mod .go { color: var(--wt-c); font-size: 13px; font-weight: 600; margin-top: 4px; }
+.wt-mod.aura .ic { background: rgba(139, 92, 246, 0.2); box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.5); }
+.wt-mod.caixa .ic { background: rgba(34, 211, 238, 0.14); box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.45); }
+.wt-mod.admin .ic { background: rgba(236, 72, 153, 0.14); box-shadow: inset 0 0 0 1px rgba(236, 72, 153, 0.45); }
+@media (max-width: 560px) {
+  .wt { justify-content: flex-start; padding-top: 72px; }
+  .wt-top { right: 16px; left: 16px; justify-content: space-between; }
+}
+fieldset.box { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 0; }
+fieldset.box legend { padding: 0 6px; font-weight: 600; font-size: 13px; }

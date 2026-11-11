@@ -24,6 +24,8 @@ services:
         sync: false
       - key: ADMIN_SENHA_INICIAL
         sync: false
+      - key: AURA_N8N_CHAVE
+        sync: false
 
 databases:
   - name: caixa-db
