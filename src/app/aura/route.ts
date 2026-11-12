@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { AURA_MODO_TESTE, auraConfigured, auraPermsOf, fetchAuraData, renderPanel } from "@/lib/aura";
+import { metaAtual } from "@/lib/aura/meta";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,7 @@ export async function GET() {
     podeEnsinar: perms.includes("ensinar"),
     podeLead: perms.includes("lead"),
     modoTeste: AURA_MODO_TESTE,
+    meta: metaAtual(),
   });
   return new Response(html, { headers: HEADERS });
 }

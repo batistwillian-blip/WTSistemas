@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseInstrucao, parseLead } from "@/lib/aura/extras";
+import { parseInstrucao, parseLead, parseNivel } from "@/lib/aura/extras";
 
 describe("parseInstrucao", () => {
   it("aceita orientação nova e limpa espaços", () => {
@@ -24,6 +24,7 @@ describe("parseLead", () => {
       curso: "",
       origem: "indicacao",
       etapa: "qualificando",
+      nivel: "",
       obs: "",
     });
   });
@@ -33,5 +34,17 @@ describe("parseLead", () => {
   it("recusa sem nome ou sem DDD", () => {
     expect(parseLead({ nome: "Jo", numero: "47999990000" })).toEqual({ erro: "informe o nome" });
     expect(parseLead({ nome: "João", numero: "99990000" })).toEqual({ erro: "informe o WhatsApp com DDD" });
+  });
+});
+
+describe("parseNivel", () => {
+  it("aceita só os cinco níveis", () => {
+    expect(parseNivel({ numero: "+55 47 99999-0000", nivel: "pos" })).toEqual({ numero: "5547999990000", nivel: "pos" });
+    expect(parseNivel({ numero: "1", nivel: "doutorado" })).toBeNull();
+    expect(parseNivel({ numero: "", nivel: "eja" })).toBeNull();
+  });
+  it("lead manual guarda o nível escolhido", () => {
+    expect(parseLead({ nome: "Ana Paula", numero: "47999990000", nivel: "mestrado" })).toMatchObject({ nivel: "mestrado" });
+    expect(parseLead({ nome: "Ana Paula", numero: "47999990000", nivel: "x" })).toMatchObject({ nivel: "" });
   });
 });

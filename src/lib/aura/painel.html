@@ -80,6 +80,19 @@ a{color:#a5b4fc}
 .kc{background:rgba(10,12,30,.75);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:9px;cursor:grab;transition:transform .15s,border-color .15s}
 .kc:hover{transform:translateY(-2px);border-color:rgba(255,122,26,.5)}
 .kc.amarelo{border-color:rgba(251,191,36,.55)}.kc.vermelho{border-color:rgba(248,113,113,.65);box-shadow:0 0 16px rgba(248,113,113,.18)}
+.nv{position:relative;display:inline-block;font-size:10px;font-weight:700;letter-spacing:.07em;line-height:1;padding:4px 9px;border-radius:999px;color:var(--nc);background:color-mix(in srgb,var(--nc) 15%,transparent);border:1px solid color-mix(in srgb,var(--nc) 60%,transparent);margin:0 0 9px;white-space:nowrap}
+.nv:after{content:"";position:absolute;left:12px;bottom:-5px;width:7px;height:7px;background:inherit;border-right:1px solid color-mix(in srgb,var(--nc) 60%,transparent);border-bottom:1px solid color-mix(in srgb,var(--nc) 60%,transparent);transform:rotate(45deg);backdrop-filter:blur(2px)}
+.nv.sug{border-style:dashed}.nv.sug:after{border-right-style:dashed;border-bottom-style:dashed}
+td .nv{margin-bottom:6px}
+.meta{display:grid;gap:14px;background:radial-gradient(520px 200px at 100% 0%,rgba(255,122,26,.16),transparent 70%),linear-gradient(180deg,var(--glass2),var(--glass))}
+.mt-top h2{margin:0 0 4px;font-size:15px;color:var(--ink);text-transform:none;letter-spacing:0}
+.mt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}
+.mt{display:grid;gap:7px;font-size:12.5px}
+.mt-h{display:flex;justify-content:space-between;align-items:baseline;font-size:14px}.mt-h .num b{font-size:22px}
+.mt-bar{position:relative;height:12px;border-radius:999px;background:rgba(255,255,255,.07);overflow:visible}
+.mt-bar>div{height:100%;border-radius:999px;box-shadow:0 0 14px rgba(61,139,255,.35);min-width:4px}
+.mt-bar i{position:absolute;top:-4px;bottom:-4px;width:2px;background:#fff;opacity:.75;border-radius:2px}
+.mt-nota{margin:0;font-size:11.5px}
 .kc b{display:block;font-size:13px}.kc .muted{font-size:12px}.kc .by{font-size:11px;margin-top:4px}
 .drawer{position:fixed;inset:0;background:rgba(3,4,12,.6);backdrop-filter:blur(3px);display:none;z-index:40}.drawer.on{display:block}
 .panel{position:absolute;right:0;top:0;bottom:0;width:min(580px,100%);background:linear-gradient(180deg,#0f1a3a,#0a1128);border-left:1px solid var(--line);overflow:auto;padding:22px}
@@ -122,6 +135,7 @@ $('#app').innerHTML=`
   <div class="seg" id="per"><button data-d="1">Hoje</button><button data-d="7" class="on">7 dias</button><button data-d="30">30 dias</button><button data-d="0">Tudo</button></div>
 </header>
 <main>
+  <section class="card meta" id="meta"></section>
   <section class="kpis" id="kpis"></section>
   <section id="kanban" style="display:none"><div class="kb" id="kb"></div><p class="muted" style="margin:6px 2px">${D.podeMover?'Arraste o card ou clique nele e use "Mover para".':'Seu acesso é só de consulta: clique no card para ver os detalhes.'} Matriculado é sempre confirmado por uma pessoa.</p></section>
   <div id="geral">
@@ -163,6 +177,28 @@ const nomeDe=n=>(porNum[n]&&porNum[n].nome)||n;
 const conta=(arr,f)=>{const m={};arr.forEach(x=>{const k=(f(x)||'').toString().trim()||'(não informado)';m[k]=(m[k]||0)+1});return Object.entries(m).sort((a,b)=>b[1]-a[1])};
 const bars=(el,pares,max=8,cores)=>{const top=pares.slice(0,max);const mx=Math.max(1,...top.map(p=>p[1]));$(el).innerHTML=top.length?top.map(([k,n],i)=>`<div class="bar"><div class="k" title="${esc(k)}">${esc(k)}</div><div class="t"><div class="f" style="width:0;${cores?`background:${cores[i]};box-shadow:0 0 12px ${cores[i]}`:''}" data-w="${n/mx*100}"></div></div><div class="n">${n}</div></div>`).join(''):'<div class="empty">Sem dados no período</div>';requestAnimationFrame(()=>$(el).querySelectorAll('.f').forEach(f=>f.style.width=f.dataset.w+'%'))};
 const etapaDe=l=>l.etapa||'novo';
+const NIVEL={eja:['EJA','#2dd4bf'],tecnico:['TÉCNICO-CEFE','#fbbf24'],graduacao:['GRADUAÇÃO','#3d8bff'],pos:['PÓS-GRADUAÇÃO','#ff7a1a'],mestrado:['MESTRADO','#f472b6']};
+// Nível gravado no lead; sem ele, um palpite pelo curso de interesse (borda tracejada até alguém confirmar na ficha).
+const nivelDe=l=>{if(NIVEL[l.nivel])return l.nivel;const c=((l.curso_interesse||'')+' '+(l.curso_matriculado||'')).toLowerCase();if(/mestrad/.test(c))return 'mestrado';if(/p[óo]s|mba|especializa/.test(c))return 'pos';if(/\beja\b|ensino m[ée]dio|supletivo|fundamental/.test(c))return 'eja';if(/t[ée]cnic|\btti\b|guia tur/.test(c))return 'tecnico';return 'graduacao'};
+const tag=l=>{const k=nivelDe(l);return `<span class="nv${l.nivel?'':' sug'}" style="--nc:${NIVEL[k][1]}" title="${l.nivel?'':'Sugerido pelo curso. Confirme na ficha do lead.'}">${NIVEL[k][0]}</span>`};
+const fmtD=s=>String(s).split('-').reverse().join('/');
+function meta(){
+  const M=D.meta;if(!M){$('#meta').style.display='none';return}
+  const ini=new Date(M.inicio+'T00:00:00'),fim=new Date(M.fim+'T23:59:59'),hoje=new Date();
+  const mats=leads.filter(l=>{if(l.etapa!=='matriculado')return false;const d=dt(l.resultado_em||l.etapa_em||l.atualizado_em);return d&&d>=ini&&d<=fim});
+  const g=mats.filter(l=>nivelDe(l)==='graduacao').length,p=mats.filter(l=>nivelDe(l)==='pos').length;
+  const dias=Math.max(0,Math.ceil((fim-hoje)/864e5)),sem=Math.max(1,dias/7);
+  const passou=Math.min(100,Math.max(0,(hoje-ini)/(fim-ini)*100));
+  const barra=(rot,v,m,cor)=>{const pc=Math.min(100,v/m*100),falta=Math.max(0,m-v);
+    return `<div class="mt"><div class="mt-h"><b>${rot}</b><span class="num"><b>${v}</b> / ${m}</span></div><div class="mt-bar"><div style="width:${pc}%;background:${cor}"></div><i style="left:${passou}%" title="Onde a barra deveria estar hoje"></i></div><div class="muted">${falta?`Faltam <b>${falta}</b> · ritmo de <b>${(falta/sem).toFixed(1).replace('.',',')}</b> por semana`:'Meta batida! 🎉'} · ${Math.round(pc)}%</div></div>`};
+  $('#meta').innerHTML=`<div class="mt-top"><h2>🏆 ${esc(M.nome)}</h2><div class="muted">${fmtD(M.inicio)} a ${fmtD(M.fim)} · ${dias?`faltam <b>${dias}</b> dias`:'campanha encerrada'}</div></div><div class="mt-grid">${barra('🎓 Graduação',g,M.graduacao,'linear-gradient(90deg,#3d8bff,#7cb3ff)')}${barra('📚 Pós-graduação',p,M.pos,'linear-gradient(90deg,#ff7a1a,#ffc46b)')}</div><p class="muted mt-nota">${esc(M.nota)} O tracinho branco mostra onde a barra deveria estar hoje para bater a meta no prazo.</p>`;
+}
+window.nivel=async function(n,v){
+  if(!D.podeMover)return;const l=porNum[n];if(!l)return;
+  try{const r=await fetch('/aura/nivel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({numero:n,nivel:v})});const j=await r.json();if(!j.ok)throw new Error(j.erro||'erro');
+    l.nivel=v;render();abrir(n);if(j.teste)alert('Versão de teste: o nível não foi gravado de verdade.')}
+  catch(e){alert('Não consegui salvar o nível: '+e.message)}
+};
 const temp=l=>{const m=String(l.perfil||'').match(/temperatura:?\s*(quente|morn[oa]|fri[oa])/i);return m?m[1].toLowerCase().replace(/a$/,'o'):''};
 function feed(){
   const ev=[];
@@ -207,12 +243,12 @@ function render(){
   bars('#cidades',conta(novos,l=>l.cidade));
   bars('#anuncios',conta(novos.filter(l=>l.origem==='meta_ads'),l=>l.anuncio));
   bars('#temp',conta(novos,temp),8,null);
-  tabela();kanban();feed();spark();
+  tabela();kanban();feed();spark();meta();
 }
 function tabela(){
   const q=$('#q').value.toLowerCase(),fs=$('#fs').value,fe=$('#fe').value;
   const rows=leads.filter(l=>(!dias||noPer(l.atualizado_em))&&(!fs||l.status===fs)&&(!fe||etapaDe(l)===fe)&&(!q||[l.nome,l.numero,l.curso_interesse,l.cidade].join(' ').toLowerCase().includes(q))).sort((a,b)=>String(b.atualizado_em).localeCompare(String(a.atualizado_em)));
-  $('#tb').innerHTML=rows.length?rows.map(l=>`<tr class="r" data-n="${esc(l.numero)}"><td><b>${esc(l.nome||'-')}</b>${temp(l)==='quente'?' <span class="pill p-quente">quente</span>':''}<div class="muted mono" style="font-size:12px">${esc(l.numero)}</div></td><td>${esc(l.curso_interesse||'-')}</td><td>${esc(l.cidade||'-')}</td><td><span class="pill p-${esc(etapaDe(l))}">${NOMES[etapaDe(l)]||esc(l.etapa)}</span></td><td><span class="pill p-${esc(l.status)}">${esc(l.status||'-')}</span></td><td>${l.origem==='meta_ads'?'Meta':'Orgânico'}</td><td class="muted">${rel(l.atualizado_em)}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">Nenhum lead encontrado</td></tr>';
+  $('#tb').innerHTML=rows.length?rows.map(l=>`<tr class="r" data-n="${esc(l.numero)}"><td>${tag(l)}<br><b>${esc(l.nome||'-')}</b>${temp(l)==='quente'?' <span class="pill p-quente">quente</span>':''}<div class="muted mono" style="font-size:12px">${esc(l.numero)}</div></td><td>${esc(l.curso_interesse||'-')}</td><td>${esc(l.cidade||'-')}</td><td><span class="pill p-${esc(etapaDe(l))}">${NOMES[etapaDe(l)]||esc(l.etapa)}</span></td><td><span class="pill p-${esc(l.status)}">${esc(l.status||'-')}</span></td><td>${l.origem==='meta_ads'?'Meta':'Orgânico'}</td><td class="muted">${rel(l.atualizado_em)}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">Nenhum lead encontrado</td></tr>';
   document.querySelectorAll('tr.r').forEach(tr=>tr.onclick=()=>abrir(tr.dataset.n));
 }
 function minDesde(l){const d=dt(l.etapa_em||l.atualizado_em);return d?Math.round((Date.now()-d.getTime())/6e4):0}
@@ -220,7 +256,7 @@ function kanban(){
   const lista=leads.filter(l=>{const e=etapaDe(l);return (e==='matriculado'||e==='perdido')?(!dias||noPer(l.resultado_em||l.atualizado_em)):true});
   $('#kb').innerHTML=ETAPAS.map(e=>{const cs=lista.filter(l=>etapaDe(l)===e).sort((a,b)=>minDesde(b)-minDesde(a));
     return `<div class="col" data-e="${e}" style="--cc:${CORES[e]}"><h3><span><i></i>${NOMES[e]}</span><span class="pill">${cs.length}</span></h3>${cs.map(l=>{const m=minDesde(l);const urg=['aguardando_thalia','pix_enviado','comprovante'].includes(e);const cor=urg&&m>=30?'vermelho':urg&&m>=10?'amarelo':'';
-      return `<div class="kc ${cor}" draggable="${D.podeMover}" data-n="${esc(l.numero)}"><b>${esc(l.nome||l.numero)}</b><div class="muted">${esc(l.curso_interesse||'-')} · ${esc(l.cidade||'-')}</div><div class="muted by">⏱ ${tempo(m)}${l.movido_por?' · '+esc(l.movido_por):''}${temp(l)==='quente'?' · 🔥':''}</div></div>`}).join('')}</div>`}).join('');
+      return `<div class="kc ${cor}" draggable="${D.podeMover}" data-n="${esc(l.numero)}">${tag(l)}<b>${esc(l.nome||l.numero)}</b><div class="muted">${esc(l.curso_interesse||'-')} · ${esc(l.cidade||'-')}</div><div class="muted by">⏱ ${tempo(m)}${l.movido_por?' · '+esc(l.movido_por):''}${temp(l)==='quente'?' · 🔥':''}</div></div>`}).join('')}</div>`}).join('');
   document.querySelectorAll('.kc').forEach(c=>{c.ondragstart=ev=>ev.dataTransfer.setData('text/plain',c.dataset.n);c.onclick=()=>abrir(c.dataset.n)});
   document.querySelectorAll('.col').forEach(col=>{col.ondragover=ev=>{ev.preventDefault();col.classList.add('over')};col.ondragleave=()=>col.classList.remove('over');col.ondrop=ev=>{ev.preventDefault();col.classList.remove('over');mover(ev.dataTransfer.getData('text/plain'),col.dataset.e)}});
 }
@@ -230,6 +266,8 @@ function abrir(n){
   $('#dp').innerHTML=`<button class="btn ghost" style="float:right" onclick="document.getElementById('dw').classList.remove('on')">Fechar</button>
   <h2 style="font-size:20px;color:#fff;text-transform:none;letter-spacing:0;margin:0 0 4px">${esc(l.nome||n)}</h2>
   <p class="muted mono" style="margin:0 0 10px">${esc(n)} · <a href="https://wa.me/${esc(n)}" target="_blank">WhatsApp ↗</a></p>
+  <div>${tag(l)}</div>
+  ${D.podeMover?`<div class="mv"><select id="nvp">${Object.keys(NIVEL).map(k=>`<option value="${k}" ${k===nivelDe(l)?'selected':''}>${NIVEL[k][0]}</option>`).join('')}</select><button class="btn" onclick="nivel('${esc(n)}',document.getElementById('nvp').value)">${l.nivel?'Trocar nível':'Confirmar nível'}</button></div>`:''}
   <p><span class="pill p-${esc(etapaDe(l))}">${NOMES[etapaDe(l)]||''}</span> <span class="pill p-${esc(l.status)}">${esc(l.status||'')}</span> <span class="pill">${l.origem==='meta_ads'?'Meta'+(l.anuncio?': '+esc(l.anuncio):''):'Orgânico'}</span></p>
   <div class="card" style="margin:14px 0"><h2>📝 Resumo</h2><p style="margin:0 0 12px">${esc(l.resumo||'-')}</p><h2>🧠 Leitura de perfil</h2><p style="margin:0 0 10px">${esc(l.perfil||'-')}</p>
   <p class="muted" style="font-size:12px;margin:0">Curso: ${esc(l.curso_interesse||'-')} · Cidade: ${esc(l.cidade||'-')} · 1º contato: ${fmt(l.primeiro_contato_em)} · Retomadas: ${esc(l.tentativas??0)}</p>
@@ -288,6 +326,7 @@ if(D.podeEnsinar||D.podeLead){
 <div><label>WhatsApp com DDD *</label><input id="cxT" inputmode="tel" placeholder="47 99999-9999" autocomplete="off"></div>
 <div><label>Cidade</label><input id="cxC" autocomplete="off"></div>
 <div class="f"><label>Curso de interesse</label><input id="cxCu" autocomplete="off"></div>
+<div><label>Nível</label><select id="cxNv">${Object.keys(NIVEL).map(k=>`<option value="${k}" ${k==='graduacao'?'selected':''}>${NIVEL[k][0]}</option>`).join('')}</select></div>
 <div><label>Como chegou</label><select id="cxO">${opts(ORIG)}</select></div>
 <div><label>Etapa atual</label><select id="cxE">${opts(ETAPAS.filter(e=>e!=='perdido').map(e=>[e,NOMES[e]]))}</select></div>
 <div class="f"><label>Observação</label><textarea id="cxOb" placeholder="Ex.: indicada pela aluna Maria, quer começar em janeiro"></textarea></div></div>
@@ -311,7 +350,7 @@ if(D.podeEnsinar||D.podeLead){
     if(nome.length<3){el('cxLe').textContent='Informe o nome.';return}
     if(tel.length<10){el('cxLe').textContent='Informe o WhatsApp com DDD.';return}
     this.disabled=true;el('cxLe').textContent='';
-    try{const j=await post('/aura/lead',{nome,numero:tel,cidade:el('cxC').value.trim(),curso:el('cxCu').value.trim(),origem:el('cxO').value,etapa:el('cxE').value,obs:el('cxOb').value.trim()});
+    try{const j=await post('/aura/lead',{nome,numero:tel,cidade:el('cxC').value.trim(),curso:el('cxCu').value.trim(),origem:el('cxO').value,nivel:el('cxNv').value,etapa:el('cxE').value,obs:el('cxOb').value.trim()});
       if(!j.ok)throw new Error(j.erro||'erro');
       if(j.teste){this.disabled=false;el('cxLe').className='cx-err ok';el('cxLe').textContent='Tudo certo'+aviso+'.';return}
       location.reload()}

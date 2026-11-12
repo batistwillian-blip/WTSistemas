@@ -2,7 +2,7 @@ import "server-only";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { Movimento } from "./move";
-import type { Instrucao, NovoLead } from "./extras";
+import type { Instrucao, Nivel, NovoLead } from "./extras";
 
 export { ETAPAS, parseMove, type Etapa, type Movimento } from "./move";
 
@@ -19,7 +19,7 @@ export function auraConfigured() {
   return CHAVE.length >= 16;
 }
 
-export { parseInstrucao, parseLead, type Instrucao, type NovoLead } from "./extras";
+export { NIVEIS, parseInstrucao, parseLead, parseNivel, type Instrucao, type Nivel, type NovoLead } from "./extras";
 
 type Dados = { leads: unknown[]; conversas: unknown[]; movimentos: unknown[]; instrucoes: unknown[]; teste?: string[] };
 
@@ -54,6 +54,10 @@ export async function moveAuraCard(m: Movimento, por: string) {
 export async function saveAuraInstrucao(i: Instrucao, autor: string): Promise<string> {
   const body = await call("portal-aura-instrucao", { method: "POST", body: JSON.stringify({ ...i, autor: autor.slice(0, 30) }) });
   return String(body.chave || "");
+}
+
+export async function setAuraNivel(numero: string, nivel: Nivel) {
+  await call("portal-aura-nivel", { method: "POST", body: JSON.stringify({ numero, nivel }) });
 }
 
 export async function addAuraLead(l: NovoLead, por: string) {

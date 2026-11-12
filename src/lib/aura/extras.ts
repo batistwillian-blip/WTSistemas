@@ -13,6 +13,18 @@ export const ETAPAS_LEAD = [
   "matriculado",
 ] as const;
 
+export const NIVEIS = ["eja", "tecnico", "graduacao", "pos", "mestrado"] as const;
+export type Nivel = (typeof NIVEIS)[number];
+
+export function parseNivel(b: unknown): { numero: string; nivel: Nivel } | null {
+  if (!b || typeof b !== "object") return null;
+  const o = b as Record<string, unknown>;
+  const numero = String(o.numero ?? "").replace(/\D/g, "").slice(0, 20);
+  const nivel = String(o.nivel ?? "") as Nivel;
+  if (!numero || !NIVEIS.includes(nivel)) return null;
+  return { numero, nivel };
+}
+
 export type Instrucao =
   | { acao: "adicionar"; texto: string }
   | { acao: "remover"; chave: string };
@@ -24,6 +36,7 @@ export type NovoLead = {
   curso: string;
   origem: (typeof ORIGENS)[number];
   etapa: (typeof ETAPAS_LEAD)[number];
+  nivel: Nivel | "";
   obs: string;
 };
 
@@ -51,5 +64,6 @@ export function parseLead(b: unknown): NovoLead | { erro: string } {
   if (numero.length < 10) return { erro: "informe o WhatsApp com DDD" };
   const origem = (ORIGENS as readonly string[]).includes(String(o.origem)) ? (o.origem as NovoLead["origem"]) : "outro";
   const etapa = (ETAPAS_LEAD as readonly string[]).includes(String(o.etapa)) ? (o.etapa as NovoLead["etapa"]) : "novo";
-  return { nome, numero, cidade: txt(o.cidade, 60), curso: txt(o.curso, 120), origem, etapa, obs: txt(o.obs, 600) };
+  const nivel = (NIVEIS as readonly string[]).includes(String(o.nivel)) ? (o.nivel as Nivel) : "";
+  return { nome, numero, cidade: txt(o.cidade, 60), curso: txt(o.curso, 120), origem, etapa, nivel, obs: txt(o.obs, 600) };
 }
