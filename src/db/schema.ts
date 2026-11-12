@@ -31,8 +31,6 @@ export const transferNatureEnum = pgEnum("natureza_transferencia", [
 ]);
 // "pessoal" = retirada do sócio gerada pela área Pessoal (espelho de um gasto pessoal pago com dinheiro da empresa).
 export const sourceEnum = pgEnum("origem", ["manual", "chserver", "pessoal"]);
-// Portal WT Sistemas: acesso à Central de vendas da Aura (sem valor = sem acesso).
-export const auraAccessEnum = pgEnum("acesso_aura", ["ver", "mover"]);
 
 export const users = pgTable("usuarios", {
   id: serial("id").primaryKey(),
@@ -40,7 +38,8 @@ export const users = pgTable("usuarios", {
   email: text("email").notNull().unique(),
   passwordHash: text("senha_hash").notNull(),
   isAdmin: boolean("admin").notNull().default(false),
-  auraAccess: auraAccessEnum("acesso_aura"),
+  // Portal WT Sistemas: ações liberadas na Central de vendas da Aura (ver, mover, ensinar, lead). Vazio = sem acesso.
+  auraPerms: text("permissoes_aura").array().notNull().default(sql`'{}'::text[]`),
   active: boolean("ativo").notNull().default(true),
   failedAttempts: integer("tentativas_falhas").notNull().default(0),
   lockedUntil: timestamp("bloqueado_ate", { withTimezone: true }),
@@ -236,7 +235,6 @@ export type Account = typeof accounts.$inferSelect;
 export type Category = typeof categories.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type Role = (typeof roleEnum.enumValues)[number];
-export type AuraAccess = (typeof auraAccessEnum.enumValues)[number];
 
 /** Configuração do Integrador BI, preenchida pelo administrador na tela. O token fica cifrado (AES-256-GCM). */
 export const integrationSettings = pgTable("config_integracao", {

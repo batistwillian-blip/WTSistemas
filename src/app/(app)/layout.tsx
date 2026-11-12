@@ -120,9 +120,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     groups.push({
       key: "admin",
       title: "Administração",
-      href: "/admin/usuarios",
+      href: "/admin/integracoes",
       links: [
-        { href: "/admin/usuarios", label: "Usuários e permissões" },
+        { href: "/usuarios", label: "Usuários e permissões" },
         { href: "/admin/integracoes", label: "Integrador BI (CHServer)" },
         { href: "/admin/log", label: "Log de alterações" },
       ],

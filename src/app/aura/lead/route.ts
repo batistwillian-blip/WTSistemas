@@ -1,6 +1,6 @@
 import { getCurrentUser } from "@/lib/auth";
 import { logChange } from "@/lib/audit";
-import { AURA_MODO_TESTE, addAuraLead, auraAccessOf, auraConfigured, parseLead } from "@/lib/aura";
+import { AURA_MODO_TESTE, addAuraLead, auraCan, auraConfigured, parseLead } from "@/lib/aura";
 import { sameOrigin } from "@/lib/same-origin";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   if (!sameOrigin(req)) return json({ ok: false, erro: "origem não permitida" }, 403);
   const user = await getCurrentUser();
   if (!user || user.mustChangePassword) return json({ ok: false, erro: "faça login de novo" }, 401);
-  if (auraAccessOf(user) !== "mover") return json({ ok: false, erro: "seu acesso é só de consulta" }, 403);
+  if (!auraCan(user, "lead")) return json({ ok: false, erro: "seu usuário não pode adicionar leads" }, 403);
   const l = parseLead(await req.json().catch(() => null));
   if ("erro" in l) return json({ ok: false, erro: l.erro }, 400);
   if (!AURA_MODO_TESTE) {

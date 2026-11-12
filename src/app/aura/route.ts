@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
-import { AURA_MODO_TESTE, auraAccessOf, auraConfigured, fetchAuraData, renderPanel } from "@/lib/aura";
+import { AURA_MODO_TESTE, auraConfigured, auraPermsOf, fetchAuraData, renderPanel } from "@/lib/aura";
 
 export const dynamic = "force-dynamic";
 
@@ -21,8 +21,8 @@ function aviso(titulo: string, texto: string, status = 200) {
 export async function GET() {
   const user = await requireUser();
   if (user.mustChangePassword) redirect("/conta?primeiro=1");
-  const access = auraAccessOf(user);
-  if (!access) return aviso("Sem acesso", "Seu usuário não tem acesso à Central de vendas da Aura. Fale com o administrador.", 403);
+  const perms = auraPermsOf(user);
+  if (!perms.includes("ver")) return aviso("Sem acesso", "Seu usuário não tem acesso à Central de vendas da Aura. Fale com o administrador.", 403);
   if (!auraConfigured()) return aviso("Central ainda não ligada", "Falta configurar a ligação com o n8n da Aura (AURA_N8N_CHAVE).", 503);
   let dados;
   try {
@@ -37,7 +37,9 @@ export async function GET() {
     teste: dados.teste ?? [],
     gerado: new Date().toISOString(),
     usuario: user.name,
-    podeMover: access === "mover",
+    podeMover: perms.includes("mover"),
+    podeEnsinar: perms.includes("ensinar"),
+    podeLead: perms.includes("lead"),
     modoTeste: AURA_MODO_TESTE,
   });
   return new Response(html, { headers: HEADERS });

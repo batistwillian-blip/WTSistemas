@@ -256,8 +256,8 @@ document.querySelectorAll('#vis button').forEach(b=>b.onclick=()=>{document.quer
 ['#q','#fs','#fe'].forEach(s=>$(s).oninput=tabela);
 $('#ft').textContent=(D.modoTeste?'VERSÃO DE TESTE · movimentos não são gravados · ':'')+'Dados de '+new Date(D.gerado).toLocaleString('pt-BR')+' · atualiza sozinho a cada 60 s';
 render();
-// ---- Ensinar a Aurora e adicionar lead (só para quem pode mover cards) ----
-if(D.podeMover){
+// ---- Ensinar a Aurora e adicionar lead (cada botão só para quem tem a permissão) ----
+if(D.podeEnsinar||D.podeLead){
   const ORIG=[['indicacao','Indicação'],['presencial','Veio ao polo'],['telefone','Ligação'],['instagram','Instagram / Facebook'],['ex_aluno','Ex-aluno / rematrícula'],['outro','Outro']];
   const opts=a=>a.map(o=>`<option value="${o[0]}">${esc(o[1])}</option>`).join('');
   const st=document.createElement('style');
@@ -282,7 +282,7 @@ if(D.podeMover){
 @media(max-width:560px){.cx-g{grid-template-columns:1fr}.cx-fab{right:12px;bottom:12px}}`;
   document.head.appendChild(st);
   const w=document.createElement('div');
-  w.innerHTML=`<div class="cx-fab"><button class="alt" id="cxBi">🎓 Ensinar a Aurora</button><button id="cxBl">＋ Adicionar lead</button></div>
+  w.innerHTML=`<div class="cx-fab">${D.podeEnsinar?'<button class="alt" id="cxBi">🎓 Ensinar a Aurora</button>':''}${D.podeLead?'<button id="cxBl">＋ Adicionar lead</button>':''}</div>
 <div class="cx-bg" id="cxL"><div class="cx-box"><h3>Adicionar lead</h3><p class="s">Para quem chegou por indicação, no polo, por ligação ou qualquer caminho fora da Aurora. O card entra no Kanban e segue o funil normal.</p>
 <div class="cx-g"><div class="f"><label>Nome completo *</label><input id="cxN" autocomplete="off"></div>
 <div><label>WhatsApp com DDD *</label><input id="cxT" inputmode="tel" placeholder="47 99999-9999" autocomplete="off"></div>
@@ -305,7 +305,7 @@ if(D.podeMover){
   w.querySelectorAll('.cx-bg').forEach(b=>b.onclick=ev=>{if(ev.target===b)b.classList.remove('on')});
   const post=(url,corpo)=>fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(corpo)}).then(r=>r.json());
   const aviso=D.modoTeste?' (versão de teste: não foi gravado de verdade)':'';
-  el('cxBl').onclick=()=>{el('cxLe').textContent='';el('cxLe').className='cx-err';el('cxL').classList.add('on');el('cxN').focus()};
+  if(D.podeLead)el('cxBl').onclick=()=>{el('cxLe').textContent='';el('cxLe').className='cx-err';el('cxL').classList.add('on');el('cxN').focus()};
   el('cxLs').onclick=async function(){
     const nome=el('cxN').value.trim(),tel=el('cxT').value.replace(/\D/g,'');
     if(nome.length<3){el('cxLe').textContent='Informe o nome.';return}
@@ -327,7 +327,7 @@ if(D.podeMover){
     try{const j=await post('/aura/instrucao',{acao:'remover',chave:c});if(!j.ok)throw new Error(j.erro||'erro');
       ins=ins.filter(x=>x.chave!==c);lista();el('cxIe').className='cx-err ok';el('cxIe').textContent=j.teste?'Removida'+aviso+'.':''}
     catch(e){el('cxIe').className='cx-err';el('cxIe').textContent='Não consegui remover: '+e.message}};
-  el('cxBi').onclick=()=>{el('cxIe').textContent='';lista();el('cxI').classList.add('on');el('cxIt').focus()};
+  if(D.podeEnsinar)el('cxBi').onclick=()=>{el('cxIe').textContent='';lista();el('cxI').classList.add('on');el('cxIt').focus()};
   el('cxIs').onclick=async function(){
     const t=el('cxIt').value.trim();
     if(t.length<5){el('cxIe').className='cx-err';el('cxIe').textContent='Escreva a orientação.';return}

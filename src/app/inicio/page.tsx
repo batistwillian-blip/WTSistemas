@@ -37,7 +37,7 @@ export default async function InicioPage() {
             </a>
           ))}
           {user.isAdmin && (
-            <Link href="/admin/usuarios" className="wt-mod admin">
+            <Link href="/usuarios" className="wt-mod admin">
               <span className="ic" aria-hidden="true">👥</span>
               <h2>Usuários e permissões</h2>
               <p>Criar usuários e escolher o que cada um pode ver e fazer.</p>

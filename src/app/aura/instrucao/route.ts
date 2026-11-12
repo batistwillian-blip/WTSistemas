@@ -1,18 +1,18 @@
 import { getCurrentUser } from "@/lib/auth";
 import { logChange } from "@/lib/audit";
-import { AURA_MODO_TESTE, auraAccessOf, auraConfigured, parseInstrucao, saveAuraInstrucao } from "@/lib/aura";
+import { AURA_MODO_TESTE, auraCan, auraConfigured, parseInstrucao, saveAuraInstrucao } from "@/lib/aura";
 import { sameOrigin } from "@/lib/same-origin";
 
 export const dynamic = "force-dynamic";
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 
-// Orientações da Aurora: quem pode mover cards também pode ensinar a Aurora.
+// Orientações da Aurora: só para quem tem a permissão "Ensinar a Aurora".
 export async function POST(req: Request) {
   if (!sameOrigin(req)) return json({ ok: false, erro: "origem não permitida" }, 403);
   const user = await getCurrentUser();
   if (!user || user.mustChangePassword) return json({ ok: false, erro: "faça login de novo" }, 401);
-  if (auraAccessOf(user) !== "mover") return json({ ok: false, erro: "seu acesso é só de consulta" }, 403);
+  if (!auraCan(user, "ensinar")) return json({ ok: false, erro: "seu usuário não pode ensinar a Aurora" }, 403);
   const i = parseInstrucao(await req.json().catch(() => null));
   if ("erro" in i) return json({ ok: false, erro: i.erro }, 400);
   let chave = i.acao === "remover" ? i.chave : `teste${Date.now().toString(36)}`;

@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { companies, companyAccess, users, type AuraAccess, type Role } from "@/db/schema";
+import { companies, companyAccess, users, type Role } from "@/db/schema";
+import { parseAuraPerms } from "@/lib/aura/perms";
 import { requireAdmin } from "@/lib/access";
 import { endAllSessions } from "@/lib/auth";
 import { logChange } from "@/lib/audit";
@@ -11,12 +12,9 @@ import { guard, int, str, UserError, type ActionState } from "@/lib/form";
 import { hashPassword, passwordProblem } from "@/lib/password";
 
 const ROLES: Role[] = ["leitura", "lancador", "gestor"];
-const AURA: AuraAccess[] = ["ver", "mover"];
-
-/** Acesso à Central de vendas da Aura (vazio = sem acesso). */
-function readAura(fd: FormData): AuraAccess | null {
-  const v = str(fd, "aura") as AuraAccess;
-  return AURA.includes(v) ? v : null;
+/** Ações liberadas na Central de vendas da Aura (nenhuma marcada = sem acesso). */
+function readAura(fd: FormData) {
+  return parseAuraPerms(fd.getAll("aura"));
 }
 
 async function readAccess(fd: FormData) {
@@ -47,12 +45,12 @@ export async function createUser(_prev: ActionState, fd: FormData): Promise<Acti
     await db.transaction(async (tx) => {
       const [u] = await tx
         .insert(users)
-        .values({ name, email, passwordHash: await hashPassword(password), isAdmin, auraAccess: readAura(fd), mustChangePassword: true })
+        .values({ name, email, passwordHash: await hashPassword(password), isAdmin, auraPerms: readAura(fd), mustChangePassword: true })
         .returning();
       if (access.length) await tx.insert(companyAccess).values(access.map((a) => ({ ...a, userId: u.id })));
       await logChange({ user: admin, action: "criar", entity: "usuario", entityId: u.id, after: { ...u, acessos: access } }, tx);
     });
-    revalidatePath("/admin/usuarios");
+    revalidatePath("/usuarios");
     return { ok: `Usuário ${name} criado. A senha provisória terá de ser trocada no primeiro acesso.` };
   });
 }
@@ -82,7 +80,7 @@ export async function updateUser(_prev: ActionState, fd: FormData): Promise<Acti
           name,
           active,
           isAdmin,
-          auraAccess: readAura(fd),
+          auraPerms: readAura(fd),
           ...(newPassword ? { passwordHash: await hashPassword(newPassword), mustChangePassword: true, failedAttempts: 0, lockedUntil: null } : {}),
         })
         .where(eq(users.id, id))
@@ -102,7 +100,7 @@ export async function updateUser(_prev: ActionState, fd: FormData): Promise<Acti
       );
     });
     if (!active || newPassword) await endAllSessions(id);
-    revalidatePath("/admin/usuarios");
+    revalidatePath("/usuarios");
     return { ok: "Usuário atualizado." };
   });
 }

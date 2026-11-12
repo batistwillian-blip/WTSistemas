@@ -1,7 +1,6 @@
 import "server-only";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import type { AuraAccess, User } from "@/db/schema";
 import type { Movimento } from "./move";
 import type { Instrucao, NovoLead } from "./extras";
 
@@ -14,15 +13,7 @@ const CHAVE = process.env.AURA_N8N_CHAVE || "";
 /** Versão de teste: lê os dados de verdade, mas não grava movimentos no n8n. */
 export const AURA_MODO_TESTE = process.env.AURA_MODO_TESTE === "1";
 
-export const auraLabels: Record<AuraAccess, string> = {
-  ver: "Só consulta",
-  mover: "Consulta e move cards",
-};
-
-/** O master (administrador) sempre tem acesso completo à Central. */
-export function auraAccessOf(user: Pick<User, "isAdmin" | "auraAccess">): AuraAccess | null {
-  return user.isAdmin ? "mover" : (user.auraAccess ?? null);
-}
+export { AURA_PERMS, auraCan, auraPermLabels, auraPermsOf, parseAuraPerms, type AuraPerm } from "./perms";
 
 export function auraConfigured() {
   return CHAVE.length >= 16;
