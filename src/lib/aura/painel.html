@@ -256,7 +256,89 @@ document.querySelectorAll('#vis button').forEach(b=>b.onclick=()=>{document.quer
 ['#q','#fs','#fe'].forEach(s=>$(s).oninput=tabela);
 $('#ft').textContent=(D.modoTeste?'VERSÃO DE TESTE · movimentos não são gravados · ':'')+'Dados de '+new Date(D.gerado).toLocaleString('pt-BR')+' · atualiza sozinho a cada 60 s';
 render();
-setInterval(()=>{if(!document.querySelector('#dw.on')&&!document.activeElement.matches('input,select'))location.reload()},60000);
+// ---- Ensinar a Aurora e adicionar lead (só para quem pode mover cards) ----
+if(D.podeMover){
+  const ORIG=[['indicacao','Indicação'],['presencial','Veio ao polo'],['telefone','Ligação'],['instagram','Instagram / Facebook'],['ex_aluno','Ex-aluno / rematrícula'],['outro','Outro']];
+  const opts=a=>a.map(o=>`<option value="${o[0]}">${esc(o[1])}</option>`).join('');
+  const st=document.createElement('style');
+  st.textContent=`.cx-fab{position:fixed;right:22px;bottom:22px;z-index:60;display:flex;flex-direction:column;gap:10px;align-items:flex-end}
+.cx-fab button{border:0;border-radius:999px;padding:12px 18px;font:600 14px Inter,system-ui,sans-serif;color:#fff;cursor:pointer;background:linear-gradient(135deg,#8b5cf6,#6d28d9);box-shadow:0 8px 24px rgba(139,92,246,.45)}
+.cx-fab button.alt{background:linear-gradient(135deg,#22d3ee,#0e7490);box-shadow:0 8px 24px rgba(34,211,238,.35)}
+.cx-bg{position:fixed;inset:0;z-index:70;background:rgba(3,4,12,.66);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;padding:16px}
+.cx-bg.on{display:flex}.cx-box,.cx-box *{box-sizing:border-box}
+.cx-box{width:min(560px,100%);max-height:92vh;overflow:auto;background:linear-gradient(180deg,#11132b,#0a0b1c);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:22px;color:#eef0ff}
+.cx-box h3{margin:0 0 4px;font:600 19px "Space Grotesk",Inter,sans-serif}.cx-box p.s{margin:0 0 16px;color:#8a90b8;font-size:13px}
+.cx-g{display:grid;grid-template-columns:1fr 1fr;gap:12px}.cx-g .f{grid-column:1/-1}
+.cx-box label{display:block;font-size:12px;color:#8a90b8;margin-bottom:4px}
+.cx-box input,.cx-box select,.cx-box textarea{width:100%;min-width:0;font:inherit;padding:9px 12px;border:1px solid rgba(255,255,255,.12);border-radius:11px;background:rgba(0,0,0,.3);color:#eef0ff;outline:none}
+.cx-box input:focus,.cx-box select:focus,.cx-box textarea:focus{border-color:#8b5cf6;box-shadow:0 0 0 3px rgba(139,92,246,.25)}
+.cx-box textarea{min-height:84px;resize:vertical}.cx-box select option{color:#111}
+.cx-row{display:flex;gap:10px;justify-content:flex-end;align-items:center;margin-top:16px;flex-wrap:wrap}
+.cx-err{color:#fca5a5;font-size:13px;margin-top:10px;min-height:18px}.cx-err.ok{color:#6ee7b7}
+.cx-list{display:flex;flex-direction:column;gap:10px;margin:0 0 14px;max-height:44vh;overflow:auto}
+.cx-it{background:rgba(139,92,246,.14);border:1px solid rgba(139,92,246,.35);border-radius:14px;padding:10px 12px;white-space:pre-wrap;word-break:break-word}
+.cx-it small{display:flex;justify-content:space-between;gap:10px;color:#8a90b8;font-size:11px;margin-top:6px}
+.cx-it a{color:#fca5a5;cursor:pointer}.cx-vz{color:#8a90b8;padding:8px 2px}
+@media(max-width:560px){.cx-g{grid-template-columns:1fr}.cx-fab{right:12px;bottom:12px}}`;
+  document.head.appendChild(st);
+  const w=document.createElement('div');
+  w.innerHTML=`<div class="cx-fab"><button class="alt" id="cxBi">🎓 Ensinar a Aurora</button><button id="cxBl">＋ Adicionar lead</button></div>
+<div class="cx-bg" id="cxL"><div class="cx-box"><h3>Adicionar lead</h3><p class="s">Para quem chegou por indicação, no polo, por ligação ou qualquer caminho fora da Aurora. O card entra no Kanban e segue o funil normal.</p>
+<div class="cx-g"><div class="f"><label>Nome completo *</label><input id="cxN" autocomplete="off"></div>
+<div><label>WhatsApp com DDD *</label><input id="cxT" inputmode="tel" placeholder="47 99999-9999" autocomplete="off"></div>
+<div><label>Cidade</label><input id="cxC" autocomplete="off"></div>
+<div class="f"><label>Curso de interesse</label><input id="cxCu" autocomplete="off"></div>
+<div><label>Como chegou</label><select id="cxO">${opts(ORIG)}</select></div>
+<div><label>Etapa atual</label><select id="cxE">${opts(ETAPAS.filter(e=>e!=='perdido').map(e=>[e,NOMES[e]]))}</select></div>
+<div class="f"><label>Observação</label><textarea id="cxOb" placeholder="Ex.: indicada pela aluna Maria, quer começar em janeiro"></textarea></div></div>
+<div class="cx-err" id="cxLe"></div>
+<div class="cx-row"><button class="btn ghost" data-x="cxL">Cancelar</button><button class="btn" id="cxLs">Adicionar ao Kanban</button></div></div></div>
+<div class="cx-bg" id="cxI"><div class="cx-box"><h3>Ensinar a Aurora</h3><p class="s">Escreva como se estivesse falando com ela. Cada orientação fica valendo em todas as conversas até você remover.</p>
+<div class="cx-list" id="cxIl"></div>
+<textarea id="cxIt" placeholder="Ex.: Nesta semana a Thalia não atende na quinta à tarde. Se pedirem visita ao polo, ofereça sexta."></textarea>
+<div class="cx-err" id="cxIe"></div>
+<div class="cx-row"><button class="btn ghost" data-x="cxI">Fechar</button><button class="btn" id="cxIs">Ensinar</button></div></div></div>`;
+  document.body.appendChild(w);
+  const el=id=>document.getElementById(id);
+  const fecha=id=>el(id).classList.remove('on');
+  w.querySelectorAll('[data-x]').forEach(b=>b.onclick=()=>fecha(b.dataset.x));
+  w.querySelectorAll('.cx-bg').forEach(b=>b.onclick=ev=>{if(ev.target===b)b.classList.remove('on')});
+  const post=(url,corpo)=>fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(corpo)}).then(r=>r.json());
+  const aviso=D.modoTeste?' (versão de teste: não foi gravado de verdade)':'';
+  el('cxBl').onclick=()=>{el('cxLe').textContent='';el('cxLe').className='cx-err';el('cxL').classList.add('on');el('cxN').focus()};
+  el('cxLs').onclick=async function(){
+    const nome=el('cxN').value.trim(),tel=el('cxT').value.replace(/\D/g,'');
+    if(nome.length<3){el('cxLe').textContent='Informe o nome.';return}
+    if(tel.length<10){el('cxLe').textContent='Informe o WhatsApp com DDD.';return}
+    this.disabled=true;el('cxLe').textContent='';
+    try{const j=await post('/aura/lead',{nome,numero:tel,cidade:el('cxC').value.trim(),curso:el('cxCu').value.trim(),origem:el('cxO').value,etapa:el('cxE').value,obs:el('cxOb').value.trim()});
+      if(!j.ok)throw new Error(j.erro||'erro');
+      if(j.teste){this.disabled=false;el('cxLe').className='cx-err ok';el('cxLe').textContent='Tudo certo'+aviso+'.';return}
+      location.reload()}
+    catch(e){this.disabled=false;el('cxLe').className='cx-err';el('cxLe').textContent='Não consegui adicionar: '+e.message}
+  };
+  let ins=(D.instrucoes||[]).slice();
+  const lista=()=>{
+    el('cxIl').innerHTML=ins.map(i=>`<div class="cx-it">${esc(i.texto)}<small><span>${esc(i.autor||'')} · ${fmt(i.criado_em)}</span><a data-c="${esc(i.chave)}">remover</a></small></div>`).join('')||'<div class="cx-vz">Nenhuma orientação ativa. O que você escrever aqui a Aurora passa a seguir.</div>';
+    el('cxIl').querySelectorAll('a[data-c]').forEach(a=>a.onclick=()=>tira(a.dataset.c));
+    el('cxIl').scrollTop=el('cxIl').scrollHeight};
+  const tira=async c=>{
+    if(!confirm('Remover esta orientação? A Aurora deixa de seguir.'))return;
+    try{const j=await post('/aura/instrucao',{acao:'remover',chave:c});if(!j.ok)throw new Error(j.erro||'erro');
+      ins=ins.filter(x=>x.chave!==c);lista();el('cxIe').className='cx-err ok';el('cxIe').textContent=j.teste?'Removida'+aviso+'.':''}
+    catch(e){el('cxIe').className='cx-err';el('cxIe').textContent='Não consegui remover: '+e.message}};
+  el('cxBi').onclick=()=>{el('cxIe').textContent='';lista();el('cxI').classList.add('on');el('cxIt').focus()};
+  el('cxIs').onclick=async function(){
+    const t=el('cxIt').value.trim();
+    if(t.length<5){el('cxIe').className='cx-err';el('cxIe').textContent='Escreva a orientação.';return}
+    this.disabled=true;el('cxIe').textContent='';
+    try{const j=await post('/aura/instrucao',{acao:'adicionar',texto:t});if(!j.ok)throw new Error(j.erro||'erro');
+      ins.push({chave:j.chave,texto:t,autor:D.usuario+' (portal)',criado_em:new Date().toISOString()});el('cxIt').value='';lista();
+      el('cxIe').className='cx-err ok';el('cxIe').textContent=j.teste?'Salva'+aviso+'.':'Pronto! A Aurora já passa a seguir.'}
+    catch(e){el('cxIe').className='cx-err';el('cxIe').textContent='Não consegui salvar: '+e.message}
+    this.disabled=false};
+}
+setInterval(()=>{if(!document.querySelector('#dw.on')&&!document.querySelector('.cx-bg.on')&&!document.activeElement.matches('input,select,textarea'))location.reload()},60000);
 }
 </script>
 </body>

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { AuraAccess, User } from "@/db/schema";
 import type { Movimento } from "./move";
+import type { Instrucao, NovoLead } from "./extras";
 
 export { ETAPAS, parseMove, type Etapa, type Movimento } from "./move";
 
@@ -27,7 +28,9 @@ export function auraConfigured() {
   return CHAVE.length >= 16;
 }
 
-type Dados = { leads: unknown[]; conversas: unknown[]; movimentos: unknown[]; teste?: string[] };
+export { parseInstrucao, parseLead, type Instrucao, type NovoLead } from "./extras";
+
+type Dados = { leads: unknown[]; conversas: unknown[]; movimentos: unknown[]; instrucoes: unknown[]; teste?: string[] };
 
 async function call(rota: string, init: RequestInit) {
   const res = await fetch(`${BASE}/${rota}`, {
@@ -47,12 +50,23 @@ export async function fetchAuraData(): Promise<Dados> {
     leads: Array.isArray(body.leads) ? body.leads : [],
     conversas: Array.isArray(body.conversas) ? body.conversas : [],
     movimentos: Array.isArray(body.movimentos) ? body.movimentos : [],
+    instrucoes: Array.isArray(body.instrucoes) ? body.instrucoes : [],
     teste: Array.isArray(body.teste) ? body.teste : [],
   };
 }
 
 export async function moveAuraCard(m: Movimento, por: string) {
   await call("portal-aura-mover", { method: "POST", body: JSON.stringify({ ...m, por: por.slice(0, 60) }) });
+}
+
+/** Grava ou desativa uma orientação da Aurora. Devolve a chave da orientação nova. */
+export async function saveAuraInstrucao(i: Instrucao, autor: string): Promise<string> {
+  const body = await call("portal-aura-instrucao", { method: "POST", body: JSON.stringify({ ...i, autor: autor.slice(0, 30) }) });
+  return String(body.chave || "");
+}
+
+export async function addAuraLead(l: NovoLead, por: string) {
+  await call("portal-aura-lead", { method: "POST", body: JSON.stringify({ ...l, por: por.slice(0, 30) }) });
 }
 
 let template: Promise<string> | null = null;
