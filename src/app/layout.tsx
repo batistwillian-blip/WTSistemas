@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { Archivo, IBM_Plex_Mono, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 
@@ -12,9 +13,11 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Tema escuro é o padrão; quem escolheu o claro no botão do menu tem o cookie "tema=claro".
+  const light = (await cookies()).get("tema")?.value === "claro";
   return (
-    <html lang="pt-BR" className={`${ui.variable} ${num.variable} ${wt.variable}`}>
+    <html lang="pt-BR" className={`${ui.variable} ${num.variable} ${wt.variable}`} data-theme={light ? "light" : undefined}>
       <body>{children}</body>
     </html>
   );

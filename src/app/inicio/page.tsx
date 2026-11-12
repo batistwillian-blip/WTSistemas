@@ -25,7 +25,11 @@ export default async function InicioPage() {
       </div>
       <div className="wt-home">
         <WtLogo />
-        <h1>Olá, {first}. Onde vamos trabalhar hoje?</h1>
+        <div className="wt-hello">
+          <h1>Bem-vindo, {first}! 👋</h1>
+          <p className="wt-sub">Onde vamos trabalhar hoje?</p>
+          <span className="wt-status">Sistema online</span>
+        </div>
         <div className="wt-mods">
           {mods.map((m) => (
             // <a> comum: a Central é uma página própria (fora do Next), então não usa navegação do cliente.

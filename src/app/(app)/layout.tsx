@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { logout } from "@/app/actions/auth";
 import { Mark } from "@/components/Mark";
 import { MenuToggle, SidebarNav, type NavGroup } from "@/components/Sidebar";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { getPersonal, getUserCompanies } from "@/lib/access";
 import { personalAccountIds } from "@/lib/personal";
 import { requireUser } from "@/lib/auth";
@@ -138,6 +139,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <div>
             <b>Caixa Consolidado</b>
             <small>
+              WT Sistemas ·{" "}
               {companies.length} {companies.length === 1 ? "empresa" : "empresas"}
             </small>
           </div>
@@ -154,6 +156,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
           <Link href="/inicio">← Início (WT Sistemas)</Link>
           <Link href="/conta">Trocar minha senha</Link>
+          <ThemeToggle />
           <form action={logout}>
             <button type="submit">Sair</button>
           </form>
