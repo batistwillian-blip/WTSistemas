@@ -10,6 +10,8 @@ export const ETAPAS = [
   "comprovante",
   "matriculado",
   "perdido",
+  // Quem já é aluno e chamou no comercial por engano: sai do funil e não conta como perda.
+  "ja_aluno",
 ] as const;
 export type Etapa = (typeof ETAPAS)[number];
 

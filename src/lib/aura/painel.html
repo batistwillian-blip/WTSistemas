@@ -126,7 +126,7 @@ footer{color:var(--muted);text-align:center;font-size:12px;padding:6px 0 30px}
 <script>
 const D = __DATA__;
 const ETAPAS=['novo','qualificando','valor_apresentado','documentos','aguardando_thalia','pix_enviado','comprovante','matriculado','perdido'];
-const NOMES={novo:'Novo',qualificando:'Qualificando',valor_apresentado:'Valor apresentado',documentos:'Documentos',aguardando_thalia:'Com a Thalia',pix_enviado:'Pix enviado',comprovante:'Comprovante recebido',matriculado:'Matriculado',perdido:'Perdido'};
+const NOMES={ja_aluno:'Já é aluno',novo:'Novo',qualificando:'Qualificando',valor_apresentado:'Valor apresentado',documentos:'Documentos',aguardando_thalia:'Com a Thalia',pix_enviado:'Pix enviado',comprovante:'Comprovante recebido',matriculado:'Matriculado',perdido:'Perdido'};
 const CORES={novo:'#94a3b8',qualificando:'#3d8bff',valor_apresentado:'#60a5fa',documentos:'#a78bfa',aguardando_thalia:'#fbbf24',pix_enviado:'#ff7a1a',comprovante:'#2dd4bf',matriculado:'#34d399',perdido:'#f87171'};
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -174,14 +174,18 @@ $('#app').innerHTML=`
       <div class="tbl"><table><thead><tr><th>Lead</th><th>Curso</th><th>Cidade</th><th>Etapa</th><th>Status</th><th>Origem</th><th>Atividade</th></tr></thead><tbody id="tb"></tbody></table></div>
     </section>
   </div>
+    <div class="card" id="alunosBox" style="display:none"><h2>🎓 Alunos que chamaram no comercial</h2><p class="muted" style="margin:-6px 0 12px;font-size:12.5px">Já são alunos e chamaram no número de vendas. Ficam fora do funil, da meta e dos relatórios; não contam como perda. Atendimento de aluno é no acadêmico: (47) 3514-8445.</p><div id="alunosL"></div></div>
   <footer id="ft"></footer>
 </main>
 <div class="drawer" id="dw"><div class="panel" id="dp"></div></div>`;
 let dias=7;
 const ini=()=>{if(!dias)return new Date(0);const d=new Date();if(dias===1){d.setHours(0,0,0,0);return d}return new Date(Date.now()-dias*864e5)};
 const noPer=s=>{const d=dt(s);return d&&d>=ini()};
-const leads=D.leads.filter(l=>l.numero&&!D.teste.includes(l.numero));
-const porNum=Object.fromEntries(leads.map(l=>[l.numero,l]));
+const todos=D.leads.filter(l=>l.numero&&!D.teste.includes(l.numero));
+// Quem já é aluno e chamou no comercial fica fora do funil, das métricas e da meta; aparece só na lista própria.
+const ehAluno=l=>l.etapa==='ja_aluno';
+let leads=todos.filter(l=>!ehAluno(l));
+const porNum=Object.fromEntries(todos.map(l=>[l.numero,l]));
 const nomeDe=n=>(porNum[n]&&porNum[n].nome)||n;
 const conta=(arr,f)=>{const m={};arr.forEach(x=>{const k=(f(x)||'').toString().trim()||'(não informado)';m[k]=(m[k]||0)+1});return Object.entries(m).sort((a,b)=>b[1]-a[1])};
 const bars=(el,pares,max=8,cores)=>{const top=pares.slice(0,max);const mx=Math.max(1,...top.map(p=>p[1]));$(el).innerHTML=top.length?top.map(([k,n],i)=>`<div class="bar"><div class="k" title="${esc(k)}">${esc(k)}</div><div class="t"><div class="f" style="width:0;${cores?`background:${cores[i]};box-shadow:0 0 12px ${cores[i]}`:''}" data-w="${n/mx*100}"></div></div><div class="n">${n}</div></div>`).join(''):'<div class="empty">Sem dados no período</div>';requestAnimationFrame(()=>$(el).querySelectorAll('.f').forEach(f=>f.style.width=f.dataset.w+'%'))};
@@ -211,7 +215,7 @@ window.nivel=async function(n,v){
 const temp=l=>{const m=String(l.perfil||'').match(/temperatura:?\s*(quente|morn[oa]|fri[oa])/i);return m?m[1].toLowerCase().replace(/a$/,'o'):''};
 function feed(){
   const ev=[];
-  D.conversas.slice(-120).forEach(c=>ev.push({t:c.criado_em,i:c.autor==='aurora'?'🤖':'💬',h:c.autor==='aurora'?`<b>Aurora</b> respondeu <b>${esc(nomeDe(c.numero))}</b> <span>· ${esc(String(c.texto||'').slice(0,70))}…</span>`:`<b>${esc(nomeDe(c.numero))}</b> escreveu <span>· ${esc(String(c.texto||'').slice(0,70))}</span>`}));
+  D.conversas.filter(c=>!ehAluno(porNum[c.numero]||{})).slice(-120).forEach(c=>ev.push({t:c.criado_em,i:c.autor==='aurora'?'🤖':'💬',h:c.autor==='aurora'?`<b>Aurora</b> respondeu <b>${esc(nomeDe(c.numero))}</b> <span>· ${esc(String(c.texto||'').slice(0,70))}…</span>`:`<b>${esc(nomeDe(c.numero))}</b> escreveu <span>· ${esc(String(c.texto||'').slice(0,70))}</span>`}));
   (D.movimentos||[]).forEach(m=>ev.push({t:m.criado_em,i:m.por&&m.por.startsWith('Aurora')?'⚙️':'👩‍💼',h:`<b>${esc(m.por||'')}</b> moveu <b>${esc(nomeDe(m.numero))}</b> para <b>${esc(NOMES[m.para]||m.para)}</b>`}));
   ev.sort((a,b)=>String(b.t).localeCompare(String(a.t)));
   $('#feed').innerHTML=ev.length?ev.slice(0,40).map(e=>`<div class="ev"><div class="i">${e.i}</div><div class="t">${e.h}</div><time>${rel(e.t)}</time></div>`).join(''):'<div class="empty">A atividade aparece aqui assim que os leads chegarem.</div>';
@@ -224,6 +228,9 @@ function spark(){
   $('#spark').innerHTML=`<defs><linearGradient id="sg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#ff7a1a" stop-opacity=".55"/><stop offset="1" stop-color="#ff7a1a" stop-opacity="0"/></linearGradient><linearGradient id="sl" x1="0" x2="1"><stop offset="0" stop-color="#ff7a1a"/><stop offset="1" stop-color="#3d8bff"/></linearGradient></defs><path d="${path} L300 70 L0 70Z" fill="url(#sg)"/><path d="${path}" fill="none" stroke="url(#sl)" stroke-width="2.5"/>`+pts.map((p,i)=>`<circle cx="${p[0]}" cy="${p[1]}" r="2.6" fill="#3d8bff"><title>${dias14[i].toLocaleDateString('pt-BR')}: ${vals[i]} leads</title></circle>`).join('');
 }
 function render(){
+  leads=todos.filter(l=>!ehAluno(l));
+  const fora=new Set(todos.filter(ehAluno).map(l=>l.numero));
+  alunos();
   const novos=leads.filter(l=>noPer(l.primeiro_contato_em||l.createdAt));
   const ativos=leads.filter(l=>noPer(l.atualizado_em));
   const mat=leads.filter(l=>l.etapa==='matriculado'&&noPer(l.resultado_em||l.atualizado_em));
@@ -232,7 +239,7 @@ function render(){
   const pix=leads.filter(l=>l.etapa==='pix_enviado'||l.etapa==='comprovante');
   const conv=novos.length?(mat.length/novos.length*100).toFixed(1)+'%':'-';
   const conversando=leads.filter(l=>l.status==='conversando');
-  const respHoje=D.conversas.filter(c=>c.autor==='aurora'&&noPer(c.criado_em)).length;
+  const respHoje=D.conversas.filter(c=>c.autor==='aurora'&&noPer(c.criado_em)&&!fora.has(c.numero)).length;
   const k=[['Leads novos',novos.length,'no período','rgba(255,122,26,.4)'],['Aurora conversando',conversando.length,'agora','rgba(61,139,255,.35)'],['Com a Thalia',thalia.length,'aguardando agora','rgba(251,191,36,.35)'],['Pix na mesa',pix.length,'aguardando pagamento','rgba(255,122,26,.4)'],['Matrículas',mat.length,'no período','rgba(52,211,153,.4)'],['Conversão',conv,'lead → matrícula','rgba(255,196,107,.35)'],['Perdidos',perd.length,'no período','rgba(248,113,113,.35)']];
   $('#kpis').innerHTML=k.map(([l,v,s,g])=>`<div class="card kpi" style="--glow:${g}"><div class="l">${l}</div><div class="v num">${v}</div><div class="s">${s}</div></div>`).join('');
   const quentes=leads.filter(l=>temp(l)==='quente'&&l.status!=='encerrado').length;
@@ -260,6 +267,12 @@ function tabela(){
   $('#tb').innerHTML=rows.length?rows.map(l=>`<tr class="r" data-n="${esc(l.numero)}"><td>${tag(l)}<br><b>${esc(l.nome||'-')}</b>${temp(l)==='quente'?' <span class="pill p-quente">quente</span>':''}<div class="muted mono" style="font-size:12px">${esc(l.numero)}</div></td><td>${esc(l.curso_interesse||'-')}</td><td>${esc(l.cidade||'-')}</td><td><span class="pill p-${esc(etapaDe(l))}">${NOMES[etapaDe(l)]||esc(l.etapa)}</span></td><td><span class="pill p-${esc(l.status)}">${esc(l.status||'-')}</span></td><td>${l.origem==='meta_ads'?'Meta':'Orgânico'}</td><td class="muted">${rel(l.atualizado_em)}</td></tr>`).join(''):'<tr><td colspan="7" class="empty">Nenhum lead encontrado</td></tr>';
   document.querySelectorAll('tr.r').forEach(tr=>tr.onclick=()=>abrir(tr.dataset.n));
 }
+function alunos(){
+  const lst=todos.filter(ehAluno).sort((a,b)=>String(b.etapa_em||b.atualizado_em).localeCompare(String(a.etapa_em||a.atualizado_em)));
+  $('#alunosBox').style.display=lst.length?'block':'none';
+  $('#alunosL').innerHTML=lst.map(l=>`<div class="alert" style="cursor:pointer" onclick="abrir('${esc(l.numero)}')"><div><b>${esc(l.nome||l.numero)}</b><div class="muted" style="font-size:12px">${esc(l.numero)} · marcado ${rel(l.etapa_em||l.atualizado_em)}${l.movido_por?' por '+esc(l.movido_por):''}</div></div><span class="pill">já é aluno</span></div>`).join('');
+}
+window.abrir=(n)=>abrir(n);
 function minDesde(l){const d=dt(l.etapa_em||l.atualizado_em);return d?Math.round((Date.now()-d.getTime())/6e4):0}
 // Barra de rolagem do Kanban: uma cópia fixa logo abaixo do topo (sempre à vista) e setas, sincronizadas com o quadro.
 let arrasto=null;
@@ -291,6 +304,7 @@ function abrir(n){
   <p class="muted mono" style="margin:0 0 10px">${esc(n)} · <a href="https://wa.me/${esc(n)}" target="_blank">WhatsApp ↗</a></p>
   <div>${tag(l)}</div>
   ${D.podeMover?`<div class="mv"><select id="nvp">${Object.keys(NIVEL).map(k=>`<option value="${k}" ${k===nivelDe(l)?'selected':''}>${NIVEL[k][0]}</option>`).join('')}</select><button class="btn" onclick="nivel('${esc(n)}',document.getElementById('nvp').value)">${l.nivel?'Trocar nível':'Confirmar nível'}</button></div>`:''}
+  ${D.podeMover?(ehAluno(l)?`<div class="mv"><span class="pill">🎓 Marcado como já é aluno</span><button class="btn" onclick="mover('${esc(n)}','novo')">Era lead: voltar para o funil</button></div>`:`<div class="mv"><button class="btn ghost" onclick="jaAluno('${esc(n)}')">🎓 Já é aluno (tirar do funil)</button></div>`):''}
   <p><span class="pill p-${esc(etapaDe(l))}">${NOMES[etapaDe(l)]||''}</span> <span class="pill p-${esc(l.status)}">${esc(l.status||'')}</span> <span class="pill">${l.origem==='meta_ads'?'Meta'+(l.anuncio?': '+esc(l.anuncio):''):'Orgânico'}</span></p>
   <div class="card" style="margin:14px 0"><h2>📝 Resumo</h2><p style="margin:0 0 12px">${esc(l.resumo||'-')}</p><h2>🧠 Leitura de perfil</h2><p style="margin:0 0 10px">${esc(l.perfil||'-')}</p>
   <p class="muted" style="font-size:12px;margin:0">Curso: ${esc(l.curso_interesse||'-')} · Cidade: ${esc(l.cidade||'-')} · 1º contato: ${fmt(l.primeiro_contato_em)} · Retomadas: ${esc(l.tentativas??0)}</p>
@@ -299,6 +313,11 @@ function abrir(n){
   <h2>Conversa</h2>${c.length?c.map(m=>`<div class="msg ${m.autor==='aurora'?'a':'l'}">${esc(m.texto)}<small>${m.autor==='aurora'?'Aurora':'Lead'} · ${fmt(m.criado_em)}</small></div>`).join(''):'<div class="empty">Sem conversa registrada ainda.</div>'}`;
   $('#dw').classList.add('on');
 }
+window.jaAluno=function(n){
+  const l=porNum[n];if(!l)return;
+  if(!confirm((l.nome||n)+' já é aluno?\n\nSai da Central e dos relatórios, não conta como perda e fica na lista "Alunos que chamaram no comercial". Dá para desfazer pela ficha.'))return;
+  mover(n,'ja_aluno');
+};
 window.mover=async function(n,para){
   if(!D.podeMover)return;
   const l=porNum[n];if(!l||etapaDe(l)===para)return;

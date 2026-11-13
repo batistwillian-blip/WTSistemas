@@ -24,3 +24,9 @@ describe("parseMove", () => {
     expect(parseMove({ numero: "1", de: "<script>", para: "novo" })?.de).toBe("");
   });
 });
+
+describe("já é aluno", () => {
+  it("aceita mover para ja_aluno sem motivo de perda", () => {
+    expect(parseMove({ numero: "5547999990000", de: "novo", para: "ja_aluno" })).toMatchObject({ para: "ja_aluno", motivo: "", curso: "" });
+  });
+});
