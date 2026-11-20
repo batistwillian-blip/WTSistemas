@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseInstrucao, parseLead, parseNivel } from "@/lib/aura/extras";
+import { parseChat, parseInstrucao, parseLead, parseNivel } from "@/lib/aura/extras";
 
 describe("parseInstrucao", () => {
   it("aceita orientação nova e limpa espaços", () => {
@@ -26,6 +26,8 @@ describe("parseLead", () => {
       etapa: "qualificando",
       nivel: "",
       obs: "",
+      inicia: "thalia",
+      contexto: "",
     });
   });
   it("origem ou etapa desconhecida cai no padrão; perdido não é etapa de entrada", () => {
@@ -46,5 +48,31 @@ describe("parseNivel", () => {
   it("lead manual guarda o nível escolhido", () => {
     expect(parseLead({ nome: "Ana Paula", numero: "47999990000", nivel: "mestrado" })).toMatchObject({ nivel: "mestrado" });
     expect(parseLead({ nome: "Ana Paula", numero: "47999990000", nivel: "x" })).toMatchObject({ nivel: "" });
+  });
+});
+
+describe("quem inicia o atendimento", () => {
+  it("Aurora inicia exige explicar como o lead chegou", () => {
+    expect(parseLead({ nome: "Vivian Souza", numero: "91991851877", inicia: "aurora" })).toEqual({ erro: "explique para a Aurora como esse lead chegou" });
+    expect(parseLead({ nome: "Vivian Souza", numero: "91991851877", inicia: "aurora", contexto: "  chamou no acadêmico  " })).toMatchObject({
+      inicia: "aurora",
+      contexto: "chamou no acadêmico",
+    });
+  });
+  it("padrão é a Thalia e o contexto é ignorado", () => {
+    expect(parseLead({ nome: "Ana Paula", numero: "47999990000", contexto: "qualquer coisa" })).toMatchObject({ inicia: "thalia", contexto: "" });
+  });
+  it("lead já matriculado nunca é chamado pela Aurora", () => {
+    expect(parseLead({ nome: "Ana Paula", numero: "47999990000", etapa: "matriculado", inicia: "aurora" })).toMatchObject({ inicia: "thalia" });
+  });
+});
+
+describe("parseChat", () => {
+  it("aceita mensagem e limpa espaços", () => {
+    expect(parseChat({ texto: "  quantos leads hoje?  " })).toEqual({ texto: "quantos leads hoje?" });
+  });
+  it("recusa vazio", () => {
+    expect(parseChat({ texto: " " })).toEqual({ erro: "escreva a mensagem" });
+    expect(parseChat(null)).toEqual({ erro: "dados inválidos" });
   });
 });

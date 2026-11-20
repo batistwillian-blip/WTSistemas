@@ -367,6 +367,12 @@ if(D.podeEnsinar||D.podeLead){
 .cx-it{background:rgba(255,122,26,.14);border:1px solid rgba(255,122,26,.35);border-radius:14px;padding:10px 12px;white-space:pre-wrap;word-break:break-word}
 .cx-it small{display:flex;justify-content:space-between;gap:10px;color:#8a90b8;font-size:11px;margin-top:6px}
 .cx-it a{color:#fca5a5;cursor:pointer}.cx-vz{color:#8a90b8;padding:8px 2px}
+.cx-h{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:#8a90b8;margin:4px 0 8px}
+.cx-chat{display:flex;flex-direction:column;gap:8px;margin:0 0 12px;max-height:36vh;overflow:auto}
+.cx-m{max-width:88%;padding:9px 12px;border-radius:14px;white-space:pre-wrap;word-break:break-word;font-size:13px}
+.cx-m.eu{margin-left:auto;background:linear-gradient(135deg,#ff7a1a,#e85d04);color:#fff;border-bottom-right-radius:4px}
+.cx-m.ai{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-bottom-left-radius:4px}
+.cx-m.ai b{display:block;font-size:11px;color:#93c5fd;margin-bottom:3px}
 @media(max-width:560px){.cx-g{grid-template-columns:1fr}.cx-fab{right:12px;bottom:12px}}`;
   document.head.appendChild(st);
   const w=document.createElement('div');
@@ -379,14 +385,17 @@ if(D.podeEnsinar||D.podeLead){
 <div><label>Nível</label><select id="cxNv">${Object.keys(NIVEL).map(k=>`<option value="${k}" ${k==='graduacao'?'selected':''}>${NIVEL[k][0]}</option>`).join('')}</select></div>
 <div><label>Como chegou</label><select id="cxO">${opts(ORIG)}</select></div>
 <div><label>Etapa atual</label><select id="cxE">${opts(ETAPAS.filter(e=>e!=='perdido').map(e=>[e,NOMES[e]]))}</select></div>
-<div class="f"><label>Observação</label><textarea id="cxOb" placeholder="Ex.: indicada pela aluna Maria, quer começar em janeiro"></textarea></div></div>
+<div class="f"><label>Observação</label><textarea id="cxOb" placeholder="Ex.: indicada pela aluna Maria, quer começar em janeiro"></textarea></div>
+<div><label>Quem inicia o atendimento</label><select id="cxIn"><option value="thalia">Thalia</option><option value="aurora">Aurora (chama agora no WhatsApp)</option></select></div>
+<div class="f" id="cxCw" style="display:none"><label>Explique para a Aurora como esse lead chegou *</label><textarea id="cxCx" placeholder="Ex.: chamou no número do acadêmico pedindo informações dos cursos / veio até o polo e pediu para chamar para ver os cursos"></textarea></div></div>
 <div class="cx-err" id="cxLe"></div>
 <div class="cx-row"><button class="btn ghost" data-x="cxL">Cancelar</button><button class="btn" id="cxLs">Adicionar ao Kanban</button></div></div></div>
-<div class="cx-bg" id="cxI"><div class="cx-box"><h3>Ensinar a Aurora</h3><p class="s">Escreva como se estivesse falando com ela. Cada orientação fica valendo em todas as conversas até você remover.</p>
-<div class="cx-list" id="cxIl"></div>
-<textarea id="cxIt" placeholder="Ex.: Nesta semana a Thalia não atende na quinta à tarde. Se pedirem visita ao polo, ofereça sexta."></textarea>
+<div class="cx-bg" id="cxI"><div class="cx-box"><h3>Falar com a Aurora</h3><p class="s">Converse com ela como no WhatsApp: pergunte sobre os leads, dê orientações, peça para mover um card ou deixe um recado sobre um lead. As orientações ficam valendo em todas as conversas até você remover.</p>
+<div class="cx-h">Orientações ativas</div><div class="cx-list" id="cxIl"></div>
+<div class="cx-h">Conversa</div><div class="cx-chat" id="cxIc"><div class="cx-vz">Ex.: "quantos leads chegaram hoje?", "não temos Enfermagem, ofereça Fisioterapia", "a Fabiana matriculou em Farmácia", "devolvi a Maria, já passei o valor de Pedagogia".</div></div>
+<textarea id="cxIt" placeholder="Escreva para a Aurora... (Enter envia, Shift+Enter quebra linha)"></textarea>
 <div class="cx-err" id="cxIe"></div>
-<div class="cx-row"><button class="btn ghost" data-x="cxI">Fechar</button><button class="btn" id="cxIs">Ensinar</button></div></div></div>`;
+<div class="cx-row"><button class="btn ghost" data-x="cxI">Fechar</button><button class="btn" id="cxIs">Enviar</button></div></div></div>`;
   document.body.appendChild(w);
   const el=id=>document.getElementById(id);
   const fecha=id=>el(id).classList.remove('on');
@@ -395,14 +404,18 @@ if(D.podeEnsinar||D.podeLead){
   const post=(url,corpo)=>fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(corpo)}).then(r=>r.json());
   const aviso=D.modoTeste?' (versão de teste: não foi gravado de verdade)':'';
   if(D.podeLead)el('cxBl').onclick=()=>{el('cxLe').textContent='';el('cxLe').className='cx-err';el('cxL').classList.add('on');el('cxN').focus()};
+  if(D.podeLead)el('cxIn').onchange=function(){const a=this.value==='aurora';el('cxCw').style.display=a?'':'none';el('cxLs').textContent=a?'Adicionar e a Aurora chama':'Adicionar ao Kanban';if(a)el('cxCx').focus()};
   el('cxLs').onclick=async function(){
     const nome=el('cxN').value.trim(),tel=el('cxT').value.replace(/\D/g,'');
     if(nome.length<3){el('cxLe').textContent='Informe o nome.';return}
     if(tel.length<10){el('cxLe').textContent='Informe o WhatsApp com DDD.';return}
+    const inicia=el('cxIn').value,contexto=el('cxCx').value.trim();
+    if(inicia==='aurora'&&contexto.length<5){el('cxLe').textContent='Explique para a Aurora como esse lead chegou.';el('cxCx').focus();return}
     this.disabled=true;el('cxLe').textContent='';
-    try{const j=await post('/aura/lead',{nome,numero:tel,cidade:el('cxC').value.trim(),curso:el('cxCu').value.trim(),origem:el('cxO').value,nivel:el('cxNv').value,etapa:el('cxE').value,obs:el('cxOb').value.trim()});
+    try{const j=await post('/aura/lead',{nome,numero:tel,cidade:el('cxC').value.trim(),curso:el('cxCu').value.trim(),origem:el('cxO').value,nivel:el('cxNv').value,etapa:el('cxE').value,obs:el('cxOb').value.trim(),inicia,contexto});
       if(!j.ok)throw new Error(j.erro||'erro');
-      if(j.teste){this.disabled=false;el('cxLe').className='cx-err ok';el('cxLe').textContent='Tudo certo'+aviso+'.';return}
+      if(j.teste){this.disabled=false;el('cxLe').className='cx-err ok';el('cxLe').textContent='Tudo certo'+(inicia==='aurora'?' (a Aurora chamaria agora)':'')+aviso+'.';return}
+      if(j.aviso)alert(j.aviso);else if(j.aurora)alert('Lead adicionado! A Aurora vai chamar no WhatsApp em instantes.');
       location.reload()}
     catch(e){this.disabled=false;el('cxLe').className='cx-err';el('cxLe').textContent='Não consegui adicionar: '+e.message}
   };
@@ -417,15 +430,26 @@ if(D.podeEnsinar||D.podeLead){
       ins=ins.filter(x=>x.chave!==c);lista();el('cxIe').className='cx-err ok';el('cxIe').textContent=j.teste?'Removida'+aviso+'.':''}
     catch(e){el('cxIe').className='cx-err';el('cxIe').textContent='Não consegui remover: '+e.message}};
   if(D.podeEnsinar)el('cxBi').onclick=()=>{el('cxIe').textContent='';lista();el('cxI').classList.add('on');el('cxIt').focus()};
-  el('cxIs').onclick=async function(){
-    const t=el('cxIt').value.trim();
-    if(t.length<5){el('cxIe').className='cx-err';el('cxIe').textContent='Escreva a orientação.';return}
-    this.disabled=true;el('cxIe').textContent='';
-    try{const j=await post('/aura/instrucao',{acao:'adicionar',texto:t});if(!j.ok)throw new Error(j.erro||'erro');
-      ins.push({chave:j.chave,texto:t,autor:D.usuario+' (portal)',criado_em:new Date().toISOString()});el('cxIt').value='';lista();
-      el('cxIe').className='cx-err ok';el('cxIe').textContent=j.teste?'Salva'+aviso+'.':'Pronto! A Aurora já passa a seguir.'}
-    catch(e){el('cxIe').className='cx-err';el('cxIe').textContent='Não consegui salvar: '+e.message}
-    this.disabled=false};
+  let conversou=false;
+  const bolha=(quem,txt)=>{
+    if(!conversou){el('cxIc').innerHTML='';conversou=true}
+    const d=document.createElement('div');d.className='cx-m '+(quem==='eu'?'eu':'ai');
+    d.innerHTML=quem==='eu'?esc(txt):'<b>Aurora</b>'+esc(txt);
+    el('cxIc').appendChild(d);el('cxIc').scrollTop=el('cxIc').scrollHeight;return d};
+  const envia=async()=>{
+    const bt=el('cxIs'),t=el('cxIt').value.trim();
+    if(bt.disabled)return;
+    if(t.length<2){el('cxIe').className='cx-err';el('cxIe').textContent='Escreva a mensagem.';return}
+    bt.disabled=true;el('cxIe').textContent='';el('cxIt').value='';
+    bolha('eu',t);const pensando=bolha('ai','pensando…');
+    try{const j=await post('/aura/chat',{texto:t});if(!j.ok)throw new Error(j.erro||'erro');
+      pensando.innerHTML='<b>Aurora</b>'+esc(j.resposta||'Feito!');
+      if(j.acao==='nova_orientacao'&&j.chave){ins.push({chave:j.chave,texto:j.texto,autor:D.usuario+' (painel)',criado_em:new Date().toISOString()});lista()}
+      if(j.acao==='desativar_orientacao'&&j.removida){ins=ins.filter(x=>x.chave!==j.removida);lista()}}
+    catch(e){pensando.innerHTML='<b>Aurora</b>Não consegui responder agora 😕 ('+esc(e.message)+')'}
+    bt.disabled=false;el('cxIc').scrollTop=el('cxIc').scrollHeight;el('cxIt').focus()};
+  el('cxIs').onclick=envia;
+  el('cxIt').onkeydown=ev=>{if(ev.key==='Enter'&&!ev.shiftKey){ev.preventDefault();envia()}};
 }
 setInterval(()=>{if(!document.querySelector('#dw.on')&&!document.querySelector('.cx-bg.on')&&!document.activeElement.matches('input,select,textarea'))location.reload()},60000);
 }

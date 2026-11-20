@@ -19,16 +19,16 @@ export function auraConfigured() {
   return CHAVE.length >= 16;
 }
 
-export { NIVEIS, parseInstrucao, parseLead, parseNivel, type Instrucao, type Nivel, type NovoLead } from "./extras";
+export { NIVEIS, parseChat, parseInstrucao, parseLead, parseNivel, type Instrucao, type Nivel, type NovoLead } from "./extras";
 
 type Dados = { leads: unknown[]; conversas: unknown[]; movimentos: unknown[]; instrucoes: unknown[]; teste?: string[] };
 
-async function call(rota: string, init: RequestInit) {
+async function call(rota: string, init: RequestInit, timeoutMs = 20_000) {
   const res = await fetch(`${BASE}/${rota}`, {
     ...init,
     headers: { ...(init.headers || {}), "x-portal-chave": CHAVE, "Content-Type": "application/json" },
     cache: "no-store",
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const body = await res.json().catch(() => null);
   if (!res.ok || !body || body.ok === false) throw new Error(body?.erro || `n8n respondeu ${res.status}`);
@@ -62,6 +62,32 @@ export async function setAuraNivel(numero: string, nivel: Nivel) {
 
 export async function addAuraLead(l: NovoLead, por: string) {
   await call("portal-aura-lead", { method: "POST", body: JSON.stringify({ ...l, por: por.slice(0, 30) }) });
+}
+
+/** Pede para a Aurora chamar no WhatsApp, agora, um lead que acabou de ser cadastrado na Central. */
+export async function chamarAuraLead(l: NovoLead, por: string) {
+  await call("aurora-chamar-lead", {
+    method: "POST",
+    body: JSON.stringify({ numero: l.numero, nome: l.nome, curso: l.curso, cidade: l.cidade, contexto: l.contexto, obs: l.obs, por: por.slice(0, 30) }),
+  });
+}
+
+export type RespostaAurora = { resposta: string; acao: string; chave: string; texto: string; removida: string };
+
+/** Conversa com a Aurora (a mesma do WhatsApp da equipe). Na versão de teste ela responde, mas não grava nada. */
+export async function conversarComAurora(texto: string, autor: string, teste: boolean): Promise<RespostaAurora> {
+  const body = await call(
+    "aurora-equipe-chat",
+    { method: "POST", body: JSON.stringify({ texto, autor: autor.slice(0, 30), teste }) },
+    90_000,
+  );
+  return {
+    resposta: String(body.resposta || "Feito!"),
+    acao: String(body.acao || "nenhuma"),
+    chave: String(body.chave || ""),
+    texto: String(body.texto || ""),
+    removida: String(body.removida || ""),
+  };
 }
 
 let template: Promise<string> | null = null;

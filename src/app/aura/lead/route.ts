@@ -1,6 +1,6 @@
 import { getCurrentUser } from "@/lib/auth";
 import { logChange } from "@/lib/audit";
-import { AURA_MODO_TESTE, addAuraLead, auraCan, auraConfigured, parseLead } from "@/lib/aura";
+import { AURA_MODO_TESTE, addAuraLead, auraCan, auraConfigured, chamarAuraLead, parseLead } from "@/lib/aura";
 import { sameOrigin } from "@/lib/same-origin";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +15,7 @@ export async function POST(req: Request) {
   if (!auraCan(user, "lead")) return json({ ok: false, erro: "seu usuário não pode adicionar leads" }, 403);
   const l = parseLead(await req.json().catch(() => null));
   if ("erro" in l) return json({ ok: false, erro: l.erro }, 400);
+  let aviso = "";
   if (!AURA_MODO_TESTE) {
     if (!auraConfigured()) return json({ ok: false, erro: "Central não configurada" }, 503);
     try {
@@ -23,7 +24,15 @@ export async function POST(req: Request) {
       console.error("Central Aura: falha ao adicionar lead:", e);
       return json({ ok: false, erro: e instanceof Error ? e.message : "o n8n não confirmou" }, 502);
     }
+    if (l.inicia === "aurora") {
+      try {
+        await chamarAuraLead(l, user.name);
+      } catch (e) {
+        console.error("Central Aura: falha ao pedir para a Aurora chamar:", e);
+        aviso = "O lead entrou no Kanban, mas a Aurora não conseguiu chamar agora. Chame pelo WhatsApp ou peça para ela no Ensinar a Aurora.";
+      }
+    }
   }
   await logChange({ user, action: AURA_MODO_TESTE ? "adicionar_lead_teste" : "adicionar_lead", entity: "aura_lead", entityId: l.numero, after: l });
-  return json({ ok: true, teste: AURA_MODO_TESTE });
+  return json({ ok: true, teste: AURA_MODO_TESTE, aurora: l.inicia === "aurora", aviso });
 }

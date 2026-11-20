@@ -38,6 +38,10 @@ export type NovoLead = {
   etapa: (typeof ETAPAS_LEAD)[number];
   nivel: Nivel | "";
   obs: string;
+  /** Quem começa o atendimento: a Thalia (como sempre foi) ou a Aurora, que chama o lead na hora no WhatsApp. */
+  inicia: "thalia" | "aurora";
+  /** Para a Aurora: como esse lead chegou (ex.: "chamou no número do acadêmico"). Obrigatório quando ela inicia. */
+  contexto: string;
 };
 
 const txt = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
@@ -65,5 +69,16 @@ export function parseLead(b: unknown): NovoLead | { erro: string } {
   const origem = (ORIGENS as readonly string[]).includes(String(o.origem)) ? (o.origem as NovoLead["origem"]) : "outro";
   const etapa = (ETAPAS_LEAD as readonly string[]).includes(String(o.etapa)) ? (o.etapa as NovoLead["etapa"]) : "novo";
   const nivel = (NIVEIS as readonly string[]).includes(String(o.nivel)) ? (o.nivel as Nivel) : "";
-  return { nome, numero, cidade: txt(o.cidade, 60), curso: txt(o.curso, 120), origem, etapa, nivel, obs: txt(o.obs, 600) };
+  const inicia = o.inicia === "aurora" && etapa !== "matriculado" ? "aurora" : "thalia";
+  const contexto = inicia === "aurora" ? txt(o.contexto, 600) : "";
+  if (inicia === "aurora" && contexto.length < 5) return { erro: "explique para a Aurora como esse lead chegou" };
+  return { nome, numero, cidade: txt(o.cidade, 60), curso: txt(o.curso, 120), origem, etapa, nivel, obs: txt(o.obs, 600), inicia, contexto };
+}
+
+/** Mensagem para a Aurora no chat da Central ("Ensinar a Aurora"). */
+export function parseChat(b: unknown): { texto: string } | { erro: string } {
+  if (!b || typeof b !== "object") return { erro: "dados inválidos" };
+  const texto = txt((b as Record<string, unknown>).texto, 2000);
+  if (texto.length < 2) return { erro: "escreva a mensagem" };
+  return { texto };
 }
