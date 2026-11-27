@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { AURA_MODO_TESTE, auraConfigured, auraPermsOf, fetchAuraData, renderPanel } from "@/lib/aura";
-import { metaAtual } from "@/lib/aura/meta";
+import { metasAtuais } from "@/lib/aura/meta";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +14,8 @@ const HEADERS = {
 
 function aviso(titulo: string, texto: string, status = 200) {
   const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Central de vendas da Aura</title>
-<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#070814;color:#eef0ff;font:15px/1.5 system-ui,sans-serif;padding:16px}div{max-width:420px;text-align:center}a{color:#22d3ee}</style></head>
-<body><div><h1 style="font-size:20px">${titulo}</h1><p style="color:#8a90b8">${texto}</p><p><a href="/inicio">← Voltar ao início</a></p></div></body></html>`;
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0D0820;color:#F3EEFF;font:15px/1.5 system-ui,sans-serif;padding:16px}div{max-width:420px;text-align:center}a{color:#C4A8FF}</style></head>
+<body><div><h1 style="font-size:20px">${titulo}</h1><p style="color:#B3A9D6">${texto}</p><p><a href="/inicio">← Voltar ao início</a></p></div></body></html>`;
   return new Response(html, { status, headers: HEADERS });
 }
 
@@ -42,7 +42,7 @@ export async function GET() {
     podeEnsinar: perms.includes("ensinar"),
     podeLead: perms.includes("lead"),
     modoTeste: AURA_MODO_TESTE,
-    meta: metaAtual(),
+    metas: metasAtuais(),
   });
   return new Response(html, { headers: HEADERS });
 }
