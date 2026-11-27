@@ -85,7 +85,7 @@ a{color:#C4A8FF}
 .kb::-webkit-scrollbar,.kb-top::-webkit-scrollbar{height:12px}
 .kb::-webkit-scrollbar-track,.kb-top::-webkit-scrollbar-track{background:rgba(255,255,255,.06);border-radius:999px}
 .kb::-webkit-scrollbar-thumb,.kb-top::-webkit-scrollbar-thumb{background:#6411E8;border-radius:999px;border:2px solid #120C29}
-.kb-nav{position:sticky;z-index:6;display:flex;align-items:center;gap:10px;margin:0 0 10px;padding:8px 10px;border-radius:14px;background:rgba(18,12,41,.94);border:1px solid var(--line)}
+.kb-nav{position:relative;z-index:6;display:flex;align-items:center;gap:10px;margin:0 0 10px;padding:8px 10px;border-radius:14px;background:rgba(18,12,41,.94);border:1px solid var(--line)}
 .kb-nav button{flex:none;width:34px;height:30px;border-radius:9px;border:1px solid var(--line);background:var(--glass2);color:var(--ink);font-size:15px;cursor:pointer}
 .kb-nav button:hover{border-color:var(--v2);color:var(--v2)}
 .kb-top{flex:1;overflow-x:auto;overflow-y:hidden;height:16px}
@@ -190,11 +190,11 @@ $('#app').innerHTML=`
 let dias=7;
 const ini=()=>{if(!dias)return new Date(0);const d=new Date();if(dias===1){d.setHours(0,0,0,0);return d}return new Date(Date.now()-dias*864e5)};
 const noPer=s=>{const d=dt(s);return d&&d>=ini()};
-const todos=D.leads.filter(l=>l.numero&&!D.teste.includes(l.numero));
+let todos=D.leads.filter(l=>l.numero&&!D.teste.includes(l.numero));
 // Quem já é aluno e chamou no comercial fica fora do funil, das métricas e da meta; aparece só na lista própria.
 const ehAluno=l=>l.etapa==='ja_aluno';
 let leads=todos.filter(l=>!ehAluno(l));
-const porNum=Object.fromEntries(todos.map(l=>[l.numero,l]));
+let porNum=Object.fromEntries(todos.map(l=>[l.numero,l]));
 const nomeDe=n=>(porNum[n]&&porNum[n].nome)||n;
 const conta=(arr,f)=>{const m={};arr.forEach(x=>{const k=(f(x)||'').toString().trim()||'(não informado)';m[k]=(m[k]||0)+1});return Object.entries(m).sort((a,b)=>b[1]-a[1])};
 const bars=(el,pares,max=8,cores)=>{const top=pares.slice(0,max);const mx=Math.max(1,...top.map(p=>p[1]));$(el).innerHTML=top.length?top.map(([k,n],i)=>`<div class="bar"><div class="k" title="${esc(k)}">${esc(k)}</div><div class="t"><div class="f" style="width:0;${cores?`background:${cores[i]};box-shadow:0 0 12px ${cores[i]}`:''}" data-w="${n/mx*100}"></div></div><div class="n">${n}</div></div>`).join(''):'<div class="empty">Sem dados no período</div>';requestAnimationFrame(()=>$(el).querySelectorAll('.f').forEach(f=>f.style.width=f.dataset.w+'%'))};
@@ -333,7 +333,6 @@ let arrasto=null;
 function barraKb(){
   const kb=$('#kb'),kt=$('#kbt');if(!kb||!kt)return;
   $('#kbtw').style.width=kb.scrollWidth+'px';kt.scrollLeft=kb.scrollLeft;
-  const h=document.querySelector('header');$('#kbn').style.top=((h&&h.offsetHeight)||0)+8+'px';
   $('#kbn').style.display=kb.scrollWidth>kb.clientWidth+4?'flex':'none';
 }
 // Arrastando um card perto da borda, o quadro anda junto para o lado.
@@ -388,7 +387,7 @@ $('#fe').innerHTML+=ETAPAS.map(e=>`<option value="${e}">${NOMES[e]}</option>`).j
 document.querySelectorAll('#per button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#per button').forEach(x=>x.classList.remove('on'));b.classList.add('on');dias=+b.dataset.d;render()});
 document.querySelectorAll('#vis button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#vis button').forEach(x=>x.classList.remove('on'));b.classList.add('on');const k=b.dataset.v==='k';try{localStorage.setItem('aura-vis',b.dataset.v)}catch(e){}$('#kanban').style.display=k?'block':'none';$('#geral').style.display=k?'none':'grid';$('#kpis').style.display=k?'none':'grid'});
 ['#q','#fs','#fe'].forEach(s=>$(s).oninput=tabela);
-$('#ft').textContent=(D.modoTeste?'VERSÃO DE TESTE · movimentos não são gravados · ':'')+'Dados de '+new Date(D.gerado).toLocaleString('pt-BR')+' · atualiza sozinho a cada 60 s';
+const rodape=()=>{$('#ft').textContent=(D.modoTeste?'VERSÃO DE TESTE · movimentos não são gravados · ':'')+'Dados de '+new Date(D.gerado).toLocaleString('pt-BR')+' · atualiza sozinho a cada 60 s, sem sair do lugar'};rodape();
 render();
 {const kb=$('#kb'),kt=$('#kbt');
   let fonte='',t0=0;// quem está rolando agora manda; o outro só acompanha
@@ -507,7 +506,25 @@ if(D.podeEnsinar||D.podeLead){
   el('cxIs').onclick=envia;
   el('cxIt').onkeydown=ev=>{if(ev.key==='Enter'&&!ev.shiftKey){ev.preventDefault();envia()}};
 }
-setInterval(()=>{if(!document.querySelector('#dw.on')&&!document.querySelector('.cx-bg.on')&&!document.activeElement.matches('input,select,textarea'))location.reload()},60000);
+// Atualização automática a cada 60 s SEM recarregar a página: busca os dados novos e redesenha no lugar,
+// mantendo a aba, a visão e a rolagem. Espera enquanto alguém está mexendo (ficha ou janela aberta,
+// digitando, arrastando um card ou interagiu há menos de 15 s).
+let mexeuEm=0;
+['pointerdown','keydown','touchstart'].forEach(ev=>addEventListener(ev,()=>{mexeuEm=Date.now()},{passive:true}));
+const ocupado=()=>document.hidden||arrasto||document.querySelector('#dw.on')||document.querySelector('.cx-bg.on')||document.activeElement.matches('input,select,textarea')||Date.now()-mexeuEm<15000;
+async function atualiza(){
+  if(ocupado())return;
+  try{
+    const r=await fetch('/aura/dados',{cache:'no-store'});
+    if(r.status===401){location.href='/login';return}
+    const j=await r.json();if(!j.ok||ocupado())return;
+    D.leads=j.leads;D.conversas=j.conversas;D.movimentos=j.movimentos;D.instrucoes=j.instrucoes;D.teste=j.teste||[];D.gerado=j.gerado;
+    todos=D.leads.filter(l=>l.numero&&!D.teste.includes(l.numero));porNum=Object.fromEntries(todos.map(l=>[l.numero,l]));
+    const kb=$('#kb'),x=kb.scrollLeft,y=scrollY;
+    render();kb.scrollLeft=x;scrollTo(0,y);rodape();
+  }catch(e){console.warn('Central: não consegui atualizar agora',e)}
+}
+setInterval(atualiza,60000);
 }
 </script>
 </body>
