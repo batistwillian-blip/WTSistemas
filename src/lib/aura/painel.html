@@ -224,9 +224,10 @@ function meta(){
     const decorrido=Math.max(1,(Math.min(hoje,fim)-ini)/864e5),total=Math.max(1,(fim-ini)/864e5);
     const passou=Math.min(100,Math.max(0,decorrido/total*100));
     let ritmo=[],proj=[],batida=true;
-    const barras=M.linhas.map(r=>{const v=mats.filter(l=>nivelDe(l)===r.nivel).length,pc=Math.min(100,v/r.meta*100),falta=Math.max(0,r.meta-v);
-      if(falta){batida=false;ritmo.push(fmt1(falta/sem)+' '+r.rotulo.toLowerCase().split(/[- ]/)[0])}
-      proj.push(Math.round(v/decorrido*total)+' '+r.rotulo.toLowerCase().split(/[- ]/)[0]);
+    const barras=M.linhas.map(r=>{const v=mats.filter(l=>(r.niveis||[r.nivel]).includes(nivelDe(l))).length,pc=Math.min(100,v/r.meta*100),falta=Math.max(0,r.meta-v);
+      const curto=M.linhas.length>1?' '+r.rotulo.toLowerCase().split(/[- ]/)[0]:' matrículas';
+      if(falta){batida=false;ritmo.push(fmt1(falta/sem)+curto)}
+      proj.push(Math.round(v/decorrido*total)+curto);
       return `<div class="mt"><div class="mt-h"><span>${esc(r.rotulo)}</span><span class="num"><b>${v}</b> / ${r.meta}</span></div><div class="mt-bar"><div style="width:${pc}%"></div><i style="left:${passou}%" title="Onde a barra deveria estar hoje"></i></div><div class="muted">${falta?`Faltam <b>${falta}</b>`:'Meta batida!'} · ${Math.round(pc)}%</div></div>`}).join('');
     const projOk=M.linhas.every((r,k)=>parseInt(proj[k])>=r.meta);
     return `<div class="card meta" style="--ic:${cor}"><div class="ih"><div><span>${esc(nome.toUpperCase())}</span><b>${esc(M.nome)}</b></div><small>${fmtD(M.inicio)} a ${fmtD(M.fim)}<br>${dias?`faltam <b>${dias}</b> dias`:'campanha encerrada'}</small></div>${barras}

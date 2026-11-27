@@ -7,7 +7,8 @@ export type MetaCampanha = {
   nome: string;
   inicio: string;
   fim: string;
-  linhas: { nivel: NivelMeta; rotulo: string; meta: number }[];
+  /** Cada linha soma as matrículas dos níveis listados (ex.: CEFE conta EJA + técnico juntos). */
+  linhas: { niveis: NivelMeta[]; rotulo: string; meta: number }[];
   nota: string;
 };
 
@@ -20,12 +21,20 @@ export const CAMPANHAS: MetaCampanha[] = [
     inicio: "2026-11-01",
     fim: "2027-03-31",
     linhas: [
-      { nivel: "graduacao", rotulo: "Graduação", meta: 70 },
-      { nivel: "pos", rotulo: "Pós-graduação", meta: 15 },
+      { niveis: ["graduacao"], rotulo: "Graduação", meta: 70 },
+      { niveis: ["pos"], rotulo: "Pós-graduação", meta: 15 },
     ],
     nota: "Aqui contam as matrículas confirmadas no funil (Pix pago). Para o bônus, o Grupo Ser só considera quem pagou a 1ª, 2ª e 3ª parcelas.",
   },
-  // CEFE Educa e AGTU: sem meta cadastrada ainda; a Central mostra "meta a definir".
+  {
+    inst: "cefe",
+    nome: "Campanha 27-1 · Verão",
+    inicio: "2026-11-01",
+    fim: "2027-03-31",
+    linhas: [{ niveis: ["eja", "tecnico"], rotulo: "EJA + Técnico", meta: 20 }],
+    nota: "Contam as matrículas confirmadas no funil, somando EJA e cursos técnicos.",
+  },
+  // AGTU: sem meta cadastrada ainda; a Central mostra "meta a definir".
 ];
 
 /** Campanha em andamento de uma instituição (ou a última dela, depois que todas acabarem). */
