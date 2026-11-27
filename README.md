@@ -50,11 +50,18 @@ Veja `.env.example`. **Nenhum segredo vai para o repositório** (ele é público
 
 ## Publicação
 
-1. Crie o banco PostgreSQL e o serviço web na hospedagem, apontando para este repositório.
-2. Cadastre as variáveis de ambiente acima.
-3. Comando de build: `npm run build`. Comando de início: `npm run start:prod` (prepara o banco, cria o primeiro administrador se preciso e sobe o servidor).
-4. Agende a sincronização a cada 15 minutos:
-   `curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://SEU-DOMINIO/api/cron/chserver`
+Hospedagem: Easypanel (VPS Resan), projeto `wtsistemas`, build com Nixpacks (`npm ci`, `npm run build`, `npm run start:prod`, porta 3000, `NODE_VERSION=22`).
+
+| Ambiente | App no Easypanel | Ramificação | Domínio |
+|---|---|---|---|
+| Teste | `teste-portal` | `teste` | teste.central.aurasc.com.br |
+| Oficial | `oficial-portal` (banco `oficial-db`) | `oficial` | central.aurasc.com.br |
+
+Toda mudança vai primeiro para `teste`; só depois de aprovada passa para `oficial`.
+
+**Publicação automática** (`.github/workflows/publicar.yml`): um envio para `teste` ou `oficial` chama o "Gatilho de Implantação" do app correspondente. Os links ficam nos segredos `DEPLOY_TESTE` e `DEPLOY_OFICIAL` do GitHub (Settings → Secrets and variables → Actions), nunca no repositório.
+
+A importação do CHServer roda sozinha dentro do servidor a cada 15 minutos (`src/instrumentation.ts`). A rota `/api/cron/chserver` (com `CRON_SECRET`) continua disponível para disparar uma importação por fora, se preciso.
 
 Use sempre HTTPS (o cookie de sessão é marcado como `secure` em produção).
 

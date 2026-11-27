@@ -1,0 +1,31 @@
+# Publicação automática no Easypanel.
+# - Envio para a ramificação "teste"   -> implanta o app teste-portal  (segredo DEPLOY_TESTE)
+# - Envio para a ramificação "oficial" -> implanta o app oficial-portal (segredo DEPLOY_OFICIAL)
+# Os segredos são os links do "Gatilho de Implantação" (Deploy Webhook) de cada app no Easypanel,
+# cadastrados em GitHub > Settings > Secrets and variables > Actions. Nunca coloque o link aqui no arquivo.
+name: Publicar no Easypanel
+on:
+  push:
+    branches: [teste, oficial]
+  workflow_dispatch: {}
+permissions: {}
+concurrency:
+  group: publicar-${{ github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  implantar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Chamar o gatilho de implantação
+        env:
+          GATILHO: ${{ github.ref_name == 'oficial' && secrets.DEPLOY_OFICIAL || github.ref_name == 'teste' && secrets.DEPLOY_TESTE || '' }}
+        run: |
+          if [ -z "$GATILHO" ]; then
+            echo "Falta o segredo do gatilho para a ramificação '${{ github.ref_name }}' (DEPLOY_TESTE ou DEPLOY_OFICIAL)."
+            exit 1
+          fi
+          code=$(curl -s -o resposta.txt -w "%{http_code}" --max-time 60 -X POST "$GATILHO" || echo 000)
+          echo "Easypanel respondeu HTTP $code"
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then cat resposta.txt; exit 1; fi
+          echo "Implantação pedida. Acompanhe no Easypanel (aba Implantações do app)."
