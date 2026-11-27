@@ -1,6 +1,7 @@
 import "server-only";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { corrigeDatasDosLeads } from "./datas";
 import type { Movimento } from "./move";
 import type { Instrucao, Nivel, NovoLead } from "./extras";
 
@@ -38,7 +39,7 @@ async function call(rota: string, init: RequestInit, timeoutMs = 20_000) {
 export async function fetchAuraData(): Promise<Dados> {
   const body = await call("portal-aura-dados", { method: "GET" });
   return {
-    leads: Array.isArray(body.leads) ? body.leads : [],
+    leads: Array.isArray(body.leads) ? corrigeDatasDosLeads(body.leads) : [],
     conversas: Array.isArray(body.conversas) ? body.conversas : [],
     movimentos: Array.isArray(body.movimentos) ? body.movimentos : [],
     instrucoes: Array.isArray(body.instrucoes) ? body.instrucoes : [],
