@@ -23,6 +23,8 @@ header{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;gap:14px;ali
 .seg{display:flex;gap:4px;padding:4px;border-radius:14px;background:#1A1238;border:1px solid var(--line)}
 .seg button{border:0;background:transparent;color:#C9BFEA;padding:8px 14px;border-radius:10px;cursor:pointer;font:500 13px "Plus Jakarta Sans",sans-serif}
 .seg button.on{background:var(--v);color:#fff;font-weight:700}
+.perw{position:relative}.per-pop{display:none;position:absolute;right:0;top:calc(100% + 8px);z-index:60;background:#1A1238;border:1px solid var(--line);border-radius:14px;padding:12px;gap:10px;flex-wrap:wrap;align-items:flex-end;box-shadow:0 14px 40px rgba(0,0,0,.55);width:max-content;max-width:calc(100vw - 24px)}.per-pop.on{display:flex}.per-pop label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}.per-pop input{background:#0D0820;color:#F3EEFF;border:1px solid var(--line);border-radius:10px;padding:7px 9px;font:500 13px "Plus Jakarta Sans",sans-serif;color-scheme:dark}.per-pop button{border:0;background:var(--v);color:#fff;border-radius:10px;padding:9px 16px;font:700 13px "Plus Jakarta Sans",sans-serif;cursor:pointer}.per-pop p{flex-basis:100%;margin:0;color:#FFB3C2;font-size:12px}.per-pop p:empty{display:none}
+@media(max-width:700px){.per-pop{right:auto;left:0}}
 .wtby{font-size:11px;color:var(--muted2)}.wtby b{color:var(--wt)}
 main{max-width:1440px;margin:0 auto;padding:22px 24px;display:grid;grid-template-columns:minmax(0,1fr);gap:18px;position:relative}
 .card{background:var(--glass);border:1px solid var(--line);border-radius:18px;padding:18px 20px;position:relative;overflow:hidden}
@@ -126,7 +128,7 @@ td .nv{margin-bottom:6px}
 .mv{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
 #geral{display:grid;gap:18px}
 footer{color:var(--muted2);text-align:center;font-size:12px;padding:6px 0 30px}
-@media(max-width:700px){header{position:static}.bar{grid-template-columns:110px 1fr 30px}.fn{grid-template-columns:100px minmax(0,1fr) 40px}.fn .r{display:none}}
+@media(max-width:700px){header{position:relative}#per{flex-wrap:wrap}#per button{padding:8px 10px}.bar{grid-template-columns:110px 1fr 30px}.fn{grid-template-columns:100px minmax(0,1fr) 40px}.fn .r{display:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 .wt a,.wt span,.wt button{color:var(--muted);text-decoration:none;font:inherit;font-size:12px;padding:6px 10px;background:none;border:0;cursor:pointer}.wt a:hover,.wt button:hover{color:var(--ink)}.wt form{margin:0}
 </style>
@@ -150,7 +152,7 @@ $('#app').innerHTML=`
   <div class="brand"><div class="orb" aria-hidden="true">a</div><div><h1>Central de vendas Aura</h1><small>UNIFAEL · CEFE Educa · AGTU · Balneário Camboriú</small></div></div>
   <span class="live"><span class="dot"></span>Aurora atendendo 24h</span>
   <div class="seg" id="vis"><button data-v="g" class="on">Painel</button><button data-v="k">Kanban</button></div>
-  <div class="seg" id="per"><button data-d="1">Hoje</button><button data-d="7" class="on">7 dias</button><button data-d="30">30 dias</button><button data-d="0">Tudo</button></div>
+  <div class="perw"><div class="seg" id="per"><button data-d="1">Hoje</button><button data-d="-1">Ontem</button><button data-d="7" class="on">7 dias</button><button data-d="30">30 dias</button><button data-d="0">Tudo</button><button data-d="c" id="perC" title="Escolher de tal data até tal data">📅 Datas</button></div><div class="per-pop" id="perPop"><label>De<input type="date" id="perDe"></label><label>Até<input type="date" id="perAte"></label><button type="button" id="perOk">Aplicar</button><p id="perErr"></p></div></div>
   <div class="seg wt"><a href="/inicio">← Início</a><span>${esc(D.usuario)}</span><form method="post" action="/sair"><button>Sair</button></form><span class="wtby">por <b>WT</b> Sistemas</span></div>
 </header>
 <main>
@@ -187,9 +189,11 @@ $('#app').innerHTML=`
   <footer id="ft"></footer>
 </main>
 <div class="drawer" id="dw"><div class="panel" id="dp"></div></div>`;
-let dias=7;
-const ini=()=>{if(!dias)return new Date(0);const d=new Date();if(dias===1){d.setHours(0,0,0,0);return d}return new Date(Date.now()-dias*864e5)};
-const noPer=s=>{const d=dt(s);return d&&d>=ini()};
+// Período: dias=1 hoje, -1 ontem, 7/30 últimos dias, 0 tudo, -2 datas escolhidas. perDe/perAte limitam início e fim (fim exclusivo).
+let dias=7,perDe=null,perAte=null;
+const zera=d=>{const x=new Date(d);x.setHours(0,0,0,0);return x};
+const ini=()=>{if(perDe)return perDe;if(!dias)return new Date(0);if(dias===1)return zera(new Date());return new Date(Date.now()-dias*864e5)};
+const noPer=s=>{const d=dt(s);return d&&d>=ini()&&(!perAte||d<perAte)};
 let todos=D.leads.filter(l=>l.numero&&!D.teste.includes(l.numero));
 // Quem já é aluno e chamou no comercial fica fora do funil, das métricas e da meta; aparece só na lista própria.
 const ehAluno=l=>l.etapa==='ja_aluno';
@@ -384,7 +388,21 @@ window.mover=async function(n,para){
 };
 $('#dw').onclick=e=>{if(e.target.id==='dw')$('#dw').classList.remove('on')};
 $('#fe').innerHTML+=ETAPAS.map(e=>`<option value="${e}">${NOMES[e]}</option>`).join('');
-document.querySelectorAll('#per button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#per button').forEach(x=>x.classList.remove('on'));b.classList.add('on');dias=+b.dataset.d;render()});
+const perBtns=[...document.querySelectorAll('#per button')],perPop=$('#perPop');
+const marcaPer=b=>{perBtns.forEach(x=>x.classList.toggle('on',x===b))};
+const ymd=d=>{const x=new Date(d.getTime()-d.getTimezoneOffset()*6e4);return x.toISOString().slice(0,10)};
+perBtns.forEach(b=>b.onclick=()=>{
+  if(b.dataset.d==='c'){const abrir=!perPop.classList.contains('on');perPop.classList.toggle('on',abrir);if(abrir){const h=new Date();$('#perAte').value=$('#perAte').value||ymd(h);$('#perDe').value=$('#perDe').value||ymd(new Date(h.getTime()-6*864e5));$('#perErr').textContent=''}return}
+  perPop.classList.remove('on');marcaPer(b);$('#perC').textContent='📅 Datas';dias=+b.dataset.d;perDe=perAte=null;
+  if(dias===-1){perAte=zera(new Date());perDe=new Date(perAte);perDe.setDate(perDe.getDate()-1)}
+  render()});
+$('#perOk').onclick=()=>{const de=$('#perDe').value,ate=$('#perAte').value;
+  if(!de||!ate){$('#perErr').textContent='Escolha as duas datas.';return}
+  if(de>ate){$('#perErr').textContent='A data inicial precisa ser antes da final.';return}
+  perDe=new Date(de+'T00:00:00');perAte=new Date(ate+'T00:00:00');perAte.setDate(perAte.getDate()+1);dias=-2;
+  const br=v=>v.slice(8,10)+'/'+v.slice(5,7);$('#perC').textContent='📅 '+(de===ate?br(de):br(de)+' a '+br(ate));
+  marcaPer($('#perC'));perPop.classList.remove('on');render()};
+addEventListener('click',e=>{if(perPop.classList.contains('on')&&!e.target.closest('.perw'))perPop.classList.remove('on')});
 document.querySelectorAll('#vis button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#vis button').forEach(x=>x.classList.remove('on'));b.classList.add('on');const k=b.dataset.v==='k';try{localStorage.setItem('aura-vis',b.dataset.v)}catch(e){}$('#kanban').style.display=k?'block':'none';$('#geral').style.display=k?'none':'grid';$('#kpis').style.display=k?'none':'grid'});
 ['#q','#fs','#fe'].forEach(s=>$(s).oninput=tabela);
 const rodape=()=>{$('#ft').textContent=(D.modoTeste?'VERSÃO DE TESTE · movimentos não são gravados · ':'')+'Dados de '+new Date(D.gerado).toLocaleString('pt-BR')+' · atualiza sozinho a cada 60 s, sem sair do lugar'};rodape();
@@ -511,7 +529,7 @@ if(D.podeEnsinar||D.podeLead){
 // digitando, arrastando um card ou interagiu há menos de 15 s).
 let mexeuEm=0;
 ['pointerdown','keydown','touchstart'].forEach(ev=>addEventListener(ev,()=>{mexeuEm=Date.now()},{passive:true}));
-const ocupado=()=>document.hidden||arrasto||document.querySelector('#dw.on')||document.querySelector('.cx-bg.on')||document.activeElement.matches('input,select,textarea')||Date.now()-mexeuEm<15000;
+const ocupado=()=>document.hidden||arrasto||document.querySelector('#dw.on')||document.querySelector('#perPop.on')||document.querySelector('.cx-bg.on')||document.activeElement.matches('input,select,textarea')||Date.now()-mexeuEm<15000;
 async function atualiza(){
   if(ocupado())return;
   try{
